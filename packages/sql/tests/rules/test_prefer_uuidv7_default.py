@@ -26,6 +26,7 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
 
 
 _LEGACY_UUID_CALL = "gen_random_uuid()"
+_OSSP_UUID_NAME = "uuid_generate_v4"
 
 
 def _legacy_uuid_sql(template: str) -> str:
@@ -152,3 +153,41 @@ def test_custom_identifier_suffix_is_not_the_native_uuid_function(prefix: str) -
 @pytest.mark.parametrize("name", ["gen_random_uu\u0130d", "gen_random_uuid\u00a0"])
 def test_unicode_function_names_are_not_native_uuid_calls(name: str) -> None:
     assert PreferUuidv7Default().check(Path("queries.sql"), f"SELECT {name}();") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        f"CREATE TABLE role (id UUID PRIMARY KEY DEFAULT {_OSSP_UUID_NAME.upper()}());",
+        f"SELECT public.{_OSSP_UUID_NAME} ();",
+        'SELECT "uuid_generate_v4"();',
+    ],
+)
+def test_flags_uuid_ossp_random_uuid(source: str) -> None:
+    [finding] = _check(source)
+    assert "uuid_generate_v4()" in finding.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "SELECT uuid_generate_v1mc();",
+        "SELECT uuid_generate_v4_custom();",
+        'SELECT "UUID_GENERATE_V4"();',
+        "SELECT 'uuid_generate_v4()';",
+        "SELECT custom$uuid_generate_v4();",
+        "-- uuid_generate_v4()\nSELECT 1;",
+        "/* uuid_generate_v4() */ SELECT 1;",
+    ],
+)
+def test_uuid_ossp_decoys_remain_allowed(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_existing_random_uuid_message_is_preserved() -> None:
+    [finding] = _check(f"SELECT {_LEGACY_UUID_CALL};")
+    assert finding.message == (
+        "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "
+        "Random keys scatter inserts across every B-tree leaf page; UUIDv7 is "
+        "time-ordered, so inserts append to the index's right edge."
+    )

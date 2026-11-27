@@ -29,12 +29,12 @@ if TYPE_CHECKING:
 
 
 PATTERN = re.compile(
-    rf'(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:(?ai:gen_random_uuid)\b|(?-i:"gen_random_uuid"))[ \t\r\n\f\v]*\(',
+    rf'(?<!{POSTGRES_IDENTIFIER_CONTINUATION})(?:(?ai:gen_random_uuid|uuid_generate_v4)\b|(?-i:"gen_random_uuid"|"uuid_generate_v4"))[ \t\r\n\f\v]*\(',
     re.IGNORECASE,
 )
 
 _MESSAGE = (
-    "`gen_random_uuid()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "
+    "`{name}()` generates a random UUIDv4 — use `uuidv7()` (Postgres 18). "
     "Random keys scatter inserts across every B-tree leaf page; UUIDv7 is "
     "time-ordered, so inserts append to the index's right edge."
 )
@@ -50,7 +50,10 @@ class PreferUuidv7Default(Rule):
         remediation="Use the PostgreSQL uuidv7() function for generated UUID defaults and values.",
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
-        limitations=("uuidv7() requires PostgreSQL 18 or an equivalent extension-provided function.",),
+        limitations=(
+            "uuidv7() requires PostgreSQL 18 or an equivalent extension-provided function.",
+            "PostgreSQL gen_random_uuid() and uuid-ossp uuid_generate_v4() are covered.",
+        ),
         examples=(
             RuleExample(
                 example_id="random-uuid-default",
@@ -98,7 +101,7 @@ class PreferUuidv7Default(Rule):
                     line=location.line,
                     col=location.column,
                     code=self.code,
-                    message=_MESSAGE,
+                    message=_MESSAGE.format(name=match.group().split("(", 1)[0].strip().strip('"').lower()),
                 )
             )
         return redirect_to_model(diags, model_owned=model_owned)

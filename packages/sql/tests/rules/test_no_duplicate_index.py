@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_sql_lint.rule_base import DefaultLevel
 from sarj_sql_lint.rules._index_analysis import parse_indexes
 from sarj_sql_lint.rules.no_duplicate_index import NoDuplicateIndex
 
@@ -399,3 +400,71 @@ def test_comment_masking_preserves_literal_values_and_authored_source_scope() ->
     assert _check(distinct_predicates) == []
     assert _check("-- dialect: mysql\nCREATE INDEX a ON event(id);\nCREATE INDEX b ON event(id);") == []
     assert _check("--> statement-breakpoint\nCREATE INDEX a ON event(id);\nCREATE INDEX b ON event(id);") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE TABLE session (id uuid PRIMARY KEY, room_id text NOT NULL UNIQUE);\nCREATE INDEX idx_session_room_id ON session(room_id);\n",
+        "CREATE TABLE cache (input_hash text, operation text, UNIQUE(input_hash, operation));\nCREATE INDEX idx_cache_lookup ON cache(input_hash, operation);\n",
+        "ALTER TABLE organization ADD CONSTRAINT organization_domain_key UNIQUE (domain);\nCREATE INDEX idx_organization_domain ON organization(domain);\n",
+        "CREATE TABLE t (id uuid PRIMARY KEY);\nCREATE INDEX idx_t_id ON t(id);\n",
+    ],
+)
+def test_reports_constraint_backed_nonunique_copies(source: str) -> None:
+    [finding] = _check(source)
+    assert finding.line == 2
+    assert finding.severity is DefaultLevel.WARNING
+    assert "constraint access path" in finding.message
+
+
+@pytest.mark.parametrize(
+    "index",
+    [
+        "CREATE INDEX i ON t(a) WHERE a IS NOT NULL;",
+        "CREATE INDEX i ON t(a DESC);",
+        "CREATE INDEX i ON t(b, a);",
+        "CREATE INDEX i ON t(a) INCLUDE (b);",
+        "CREATE INDEX i ON t USING hash (a);",
+        "CREATE INDEX i ON u(a);",
+        "CREATE INDEX i ON t((lower(a)));",
+        "CREATE INDEX i ON t(a text_pattern_ops);",
+        "CREATE INDEX i ON ONLY t(a);",
+        "CREATE INDEX i ON t(a) TABLESPACE fast;",
+        "CREATE INDEX i ON t(a) WITH (fillfactor = 70);",
+    ],
+)
+def test_distinct_constraint_access_paths_remain_allowed(index: str) -> None:
+    assert _check(f"CREATE TABLE t (id uuid PRIMARY KEY, a text UNIQUE, b text, UNIQUE (a, b));\n{index}") == []
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "CREATE INDEX i ON t(a);\nALTER TABLE t ADD CONSTRAINT k UNIQUE (a);\n",
+        "-- migrate:up\nALTER TABLE t ADD CONSTRAINT k UNIQUE (a);\n-- migrate:down\nALTER TABLE t DROP CONSTRAINT k;\nCREATE INDEX i ON t(a);\n",
+        "CREATE TABLE t (a text UNIQUE);\nCREATE INDEX i ON t(a);\nDROP INDEX i;\n",
+        "CREATE TABLE t (a text, b text, UNIQUE (a, b));\nCREATE INDEX i ON t(a);\n",
+    ],
+)
+def test_constraint_order_sections_drops_and_strict_prefixes_remain_allowed(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_constraint_copy_preserves_existing_strict_prefix_diagnostic() -> None:
+    source = (
+        "CREATE TABLE t (a text UNIQUE, b text);\nCREATE INDEX short_idx ON t(a);\nCREATE INDEX long_idx ON t(a, b);"
+    )
+    findings = _check(source)
+    assert [(finding.line, finding.severity) for finding in findings] == [
+        (2, DefaultLevel.WARNING),
+        (3, DefaultLevel.WARNING),
+    ]
+    assert findings[0].message == (
+        "Non-unique index `short_idx` repeats a PRIMARY KEY or UNIQUE constraint access path on table `t`; "
+        "remove the non-unique copy unless an exact query plan proves distinct value."
+    )
+    assert findings[1].message == (
+        "Index `short_idx` is a strict left prefix of `long_idx` on table `t`; "
+        "the pair may overlap, so verify the exact query plan before retaining both."
+    )

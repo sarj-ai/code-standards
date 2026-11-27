@@ -183,6 +183,20 @@ def _collect_indexes(source: str) -> dict[_TableKey, set[tuple[str, ...]]]:
     return indexed_cols
 
 
+@dataclass(frozen=True, slots=True)
+class ConstraintIndexKeys:
+    start: int
+    keys: dict[_TableKey, set[tuple[str, ...]]]
+
+
+def constraint_index_keys(masked: str) -> Iterator[ConstraintIndexKeys]:
+    for start, stmt in _segments(masked, _STATEMENT_DELIMITER):
+        keys: dict[_TableKey, set[tuple[str, ...]]] = {}
+        _collect_constraint_indexes(stmt, keys)
+        if keys:
+            yield ConstraintIndexKeys(start + len(stmt) - len(stmt.lstrip()), keys)
+
+
 _MIGRATION_ROOT_NAMES = frozenset({"migrations", "migration", "migrate", "drizzle"})
 
 _MAX_TREE_FILES = 600

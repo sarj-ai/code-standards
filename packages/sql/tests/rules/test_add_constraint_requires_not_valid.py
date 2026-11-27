@@ -533,3 +533,55 @@ def test_nonexecuting_ddl_preserves_fresh_table_ownership(between: str) -> None:
 def test_resolution_settings_preserve_explicitly_qualified_relation_identity(relation: str, setting: str) -> None:
     source = f"CREATE TABLE {relation}(id int);\n{setting}\nALTER TABLE {relation} ADD CHECK(id > 0);"
     assert len(_check(source)) == (1 if relation == "child" else 0)
+
+
+def test_reports_first_guarded_constraint_in_do_body() -> None:
+    source = "DO $$\nBEGIN\n  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'c') THEN\n    ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0);\n  END IF;\nEND $$;"
+    [finding] = _check(source)
+    assert finding.line == 4
+
+
+def test_reports_first_constraint_in_do_exception_block() -> None:
+    source = "DO $$ BEGIN ALTER TABLE child ADD CONSTRAINT child_parent_fk FOREIGN KEY (parent_id) REFERENCES parent (id); EXCEPTION WHEN duplicate_object THEN NULL; END $$;"
+    assert len(_check(source)) == 1
+
+
+def test_reports_two_consecutive_guarded_constraints_in_do_body() -> None:
+    source = """DO $$ BEGIN
+IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'first_fk') THEN
+ALTER TABLE first_child ADD CONSTRAINT first_fk FOREIGN KEY (parent_id) REFERENCES parent (id);
+END IF;
+IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'second_fk') THEN
+ALTER TABLE second_child ADD CONSTRAINT second_fk FOREIGN KEY (parent_id) REFERENCES parent (id);
+END IF;
+END $$;"""
+    assert [finding.line for finding in _check(source)] == [3, 6]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "DO $$\nBEGIN\n  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'c') THEN\n    ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0) NOT VALID;\n  END IF;\nEND $$;",
+        "DO $$ BEGIN IF true THEN EXECUTE 'ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0)'; END IF; END $$;",
+        "DO $$ BEGIN IF true THEN ALTER TABLE users ADD CONSTRAINT u UNIQUE (email); END IF; END $$;",
+        "CREATE FUNCTION f() RETURNS void AS $$ BEGIN ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0); END $$ LANGUAGE plpgsql;",
+        "CREATE PROCEDURE f() LANGUAGE plpgsql AS $$ BEGIN ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0); END $$;",
+        "DO $$ BEGIN ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0) NOT ENFORCED; END $$;",
+        "DO $$ BEGIN ALTER TABLE users ADD CONSTRAINT p PRIMARY KEY (id); END $$;",
+        "DO $$ BEGIN /* ALTER TABLE users ADD CHECK (age > 0); */ PERFORM 1; END $$;",
+    ],
+)
+def test_do_body_precision_boundaries_remain_allowed(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_existing_constraint_after_do_body_semicolon_is_preserved() -> None:
+    source = "DO $$ BEGIN PERFORM 1; ALTER TABLE users ADD CONSTRAINT c CHECK (age > 0); END $$;"
+    [finding] = _check(source)
+    assert finding.line == 1
+    assert finding.col == 20
+
+
+@pytest.mark.parametrize("prefix", ["IF true THEN", "IF false THEN NULL; ELSE", "LOOP"])
+def test_reports_constraint_after_do_control_flow_boundary(prefix: str) -> None:
+    assert len(_check(f"DO $$ BEGIN {prefix} ALTER TABLE users ADD CHECK (age > 0); END $$;")) == 1
