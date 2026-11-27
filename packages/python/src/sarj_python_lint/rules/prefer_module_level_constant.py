@@ -39,6 +39,7 @@ _MIN_LOOP_ELEMENTS = 3
 _COMPILE_MAX_ARGS = 2
 
 _REGEX_KIND = "regex"
+_REGEX_METHOD_KIND = "regex-method"
 _FROZENSET_KIND = "frozenset"
 
 _RE_SOURCES = frozenset({"re"})
@@ -204,7 +205,7 @@ class PreferModuleLevelConstant(Rule):
                         code=self.code,
                         message=_message(name, candidate),
                         severity=Severity.WARNING
-                        if candidate.kind == "regex" or context.dynamic_namespace
+                        if candidate.kind in {_REGEX_KIND, _REGEX_METHOD_KIND} or context.dynamic_namespace
                         else Severity.ERROR,
                     )
                 )
@@ -330,12 +331,19 @@ def _classify(
                 unsafe_bindings,
                 re_attribute_mutated=re_attribute_mutated,
             )
+        case ast.Attribute(value=ast.Call() as call, attr=attr) if attr in _SAFE_REGEX_METHODS:
+            candidate = _call_candidate(call, imports, unsafe_bindings, re_attribute_mutated=re_attribute_mutated)
+            return (
+                _Candidate(kind=_REGEX_METHOD_KIND, size=1)
+                if candidate is not None and candidate.kind == _REGEX_KIND
+                else None
+            )
         case _:
             return None
 
 
 def _is_large_enough(candidate: _Candidate, node: ast.AST, parents: dict[int, ast.AST]) -> bool:
-    if candidate.kind == _REGEX_KIND:
+    if candidate.kind in {_REGEX_KIND, _REGEX_METHOD_KIND}:
         return True
     minimum = _MIN_LOOP_ELEMENTS if _has_loop_ancestor(node, parents) else _MIN_ELEMENTS
     return candidate.size >= minimum
@@ -510,6 +518,12 @@ def _is_safe_read(
     unsafe_bindings: frozenset[str],
 ) -> bool:
     parent = parents.get(id(node))
+    if candidate.kind == _REGEX_METHOD_KIND:
+        match parent:
+            case ast.Call(func=callee):
+                return callee is node
+            case _:
+                return False
     match parent:
         case ast.Attribute():
             return _is_safe_method_call(parent, parents, _safe_methods_for(candidate))
@@ -615,7 +629,7 @@ def _is_excluded_test_path(path: Path) -> bool:
 
 
 def _message(name: str, candidate: _Candidate) -> str:
-    if candidate.kind == _REGEX_KIND:
+    if candidate.kind in {_REGEX_KIND, _REGEX_METHOD_KIND}:
         return f"`{name}` repeats a regex-cache lookup on every call — hoist it to module scope."
     if candidate.kind == "dict":
         return (

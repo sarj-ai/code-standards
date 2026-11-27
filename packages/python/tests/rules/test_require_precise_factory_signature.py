@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 _PREFIX = "from collections.abc import Callable\nclass Result: pass\n"
 _PARTIAL_PREFIX = "from functools import partial\nclass Result: pass\n"
 _PARTIAL_SOURCE = _PARTIAL_PREFIX + "def build(factory: partial[Result]):\n    return factory(size=4)\n"
+_RETAINED = _PREFIX + (
+    "class Service:\n"
+    "    def __init__(self, factory: Callable[..., Result]) -> None:\n"
+    "        self._factory: Callable[..., Result] = factory\n"
+    "    def start(self):\n"
+    "        return self._factory(size=4)\n"
+)
 _CASES = (
     EvaluationCase(
         "fixed-keyword",
@@ -299,6 +306,77 @@ _PARTIAL_EXCLUSIONS = tuple(
 
 def _check(source: str, path: Path = Path("app/service.py")) -> list[Diagnostic]:
     return RequirePreciseFactorySignature().check(path, source)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [_RETAINED, _RETAINED.replace(_PREFIX, _PARTIAL_PREFIX).replace("Callable[..., Result]", "partial[Result]")],
+    ids=("callable", "partial"),
+)
+def test_constructor_retained_factory(source: str) -> None:
+    findings = _check(source)
+    assert len(findings) == 1
+    assert (findings[0].code, findings[0].line, findings[0].severity) == ("SARJ473", 4, Severity.WARNING)
+    assert "`factory`" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        _RETAINED.replace("_factory", "factory_"),
+        _RETAINED.replace("self._factory(size=4)", "self._factory(4)"),
+        _RETAINED.replace("self._factory(size=4)", "self._factory(**options)"),
+        _RETAINED + "    def expose(self):\n        return self._factory\n",
+        _RETAINED + "    def swap(self, other):\n        self._factory = other\n",
+        _RETAINED + "def peek(service):\n    return service._factory(size=1)\n",
+        _RETAINED.replace("Callable[..., Result]", "Callable[[int], Result]"),
+        _RETAINED.replace("Callable[..., Result]", "Callable[..., str]"),
+        _RETAINED.replace(" = factory\n", " = factory\n        register(factory)\n"),
+        _RETAINED.replace("self._factory(size=4)", "self._factory(*args, size=4)"),
+        _RETAINED + "    def clear(self):\n        del self._factory\n",
+        _RETAINED + '    def reflect(self):\n        return getattr(self, "_factory")\n',
+        _RETAINED.replace("self._factory(size=4)", "lambda: self._factory(size=4)"),
+        _RETAINED.replace("self._factory(size=4)", "[self._factory(size=item) for item in items]"),
+        _RETAINED.replace("        return self._factory(size=4)\n", "        pass\n"),
+        _RETAINED.replace("class Service:", "@decorate\nclass Service:"),
+        _RETAINED.replace("class Service:", "class Service[T]:"),
+        _RETAINED.replace("    def __init__", "    @decorate\n    def __init__"),
+        _RETAINED.replace("    def __init__", "    async def __init__"),
+        _RETAINED + "    def __init__(self):\n        pass\n",
+        _RETAINED.replace("        self._factory:", "        if enabled:\n            self._factory:"),
+        _RETAINED.replace(" = factory\n", " = factory\n        factory = Result\n"),
+    ],
+    ids=(
+        "public-field",
+        "positional-call",
+        "keyword-unpacking",
+        "escaped",
+        "reassigned-field",
+        "external-call",
+        "precise-callable",
+        "unowned-result",
+        "reused-parameter",
+        "positional-unpacking",
+        "deleted-field",
+        "reflection",
+        "lambda",
+        "comprehension",
+        "unused-field",
+        "decorated-class",
+        "generic-class",
+        "decorated-constructor",
+        "async-constructor",
+        "duplicate-constructor",
+        "conditional-assignment",
+        "rebound-parameter",
+    ),
+)
+def test_ignores_unsafe_constructor_retention(source: str) -> None:
+    assert _check(source) == []
+
+
+def test_constructor_retention_excluded_path() -> None:
+    assert _check(_RETAINED, Path("tests/test_service.py")) == []
 
 
 @pytest.mark.parametrize("case", _CASES, ids=tuple(case.case_id for case in _CASES))

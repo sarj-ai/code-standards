@@ -49,7 +49,7 @@ class RequirePreciseFactorySignature(ProjectRule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Private module-level functions with closed, statically resolved direct callers block as errors. Public, async, or escaped callable contracts retain advisory findings so published dynamic APIs are preserved.",
-            "Only undecorated module-level functions with proven standard Callable[..., OwnedClass] or functools.partial[OwnedClass] parameters directly called with at least one named keyword are considered. Imported classes require scanned first-party declarations; direct partial construction and calls remain native type-checker ownership.",
+            "Only undecorated module-level functions with proven standard Callable[..., OwnedClass] or functools.partial[OwnedClass] parameters directly called with at least one named keyword are considered. Imported classes require scanned first-party declarations; direct partial construction and calls remain native type-checker ownership. A constructor parameter stored once on a private self field is also considered, as a warning, when every use of that field in the file is a direct fixed-keyword call from a method of the same class.",
             "Tests, test support, generated code, unresolved/string/generic annotations, positional-only calls, unpacking, forwarding, nested captures, rebinding and ambiguous imports are excluded. Import capture checks are conservative across the file, so an unrelated local pattern, exception or walrus binding can prevent a warning.",
             "A fixed call demonstrates signature erasure, not a current runtime defect. Genuine dynamic APIs can use a reasoned suppression. No autofix: the correct contract depends on whether classes or function factories are intended.",
         ),
@@ -124,36 +124,62 @@ class RequirePreciseFactorySignature(ProjectRule):
         if any(alias.name == "*" for node in context.nodes(ast.ImportFrom) for alias in node.names):
             return []
         findings: list[Diagnostic] = []
-        for function in tree.body:
-            if (
-                not isinstance(function, (ast.FunctionDef, ast.AsyncFunctionDef))
-                or function.decorator_list
-                or function.type_params
-            ):
-                continue
-            for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs):
-                result = _factory_result(argument.annotation, context)
-                if (
-                    result is None
-                    or not _fixed_calls(function, argument.arg, context)
-                    or not _owned_result(result, function, context)
+        for node in tree.body:
+            match node:
+                case (
+                    ast.FunctionDef(decorator_list=[], type_params=[])
+                    | ast.AsyncFunctionDef(decorator_list=[], type_params=[])
                 ):
-                    continue
-                findings.append(
-                    Diagnostic(
-                        path=context.path,
-                        line=argument.lineno,
-                        col=argument.col_offset + 1,
-                        code=self.code,
-                        message=(
-                            f"`{argument.arg}` is called with fixed keywords but its factory annotation erases its "
-                            "argument contract; remove unnecessary factory indirection or reuse a precise callable "
-                            "contract that preserves the accepted keywords."
-                        ),
-                        severity=Severity.ERROR if _closed_owner(function, context) else Severity.WARNING,
-                    )
-                )
+                    findings.extend(self._function_findings(node, context))
+                case ast.ClassDef(decorator_list=[], type_params=[]):
+                    constructors = [
+                        method
+                        for method in node.body
+                        if isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)) and method.name == "__init__"
+                    ]
+                    match constructors:
+                        case [ast.FunctionDef(decorator_list=[]) as function]:
+                            findings.extend(self._function_findings(function, context, node))
+                        case _:
+                            pass
+                case _:
+                    pass
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+    def _function_findings(
+        self,
+        function: ast.FunctionDef | ast.AsyncFunctionDef,
+        context: PythonFileContext,
+        owner: ast.ClassDef | None = None,
+    ) -> list[Diagnostic]:
+        parameters = (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        arguments = parameters if owner is None else parameters[1:]
+        findings: list[Diagnostic] = []
+        for argument in arguments:
+            result = _factory_result(argument.annotation, context)
+            if result is None:
+                continue
+            if owner is None:
+                fixed_calls = _fixed_calls(function, argument.arg, context)
+            else:
+                fixed_calls = _retained_calls(function, owner, parameters[0].arg, argument.arg, context)
+            if not fixed_calls or not _owned_result(result, function, context):
+                continue
+            findings.append(
+                Diagnostic(
+                    path=context.path,
+                    line=argument.lineno,
+                    col=argument.col_offset + 1,
+                    code=self.code,
+                    message=(
+                        f"`{argument.arg}` is called with fixed keywords but its factory annotation erases its "
+                        "argument contract; remove unnecessary factory indirection or reuse a precise callable "
+                        "contract that preserves the accepted keywords."
+                    ),
+                    severity=Severity.ERROR if owner is None and _closed_owner(function, context) else Severity.WARNING,
+                )
+            )
+        return findings
 
 
 def _factory_result(annotation: ast.expr | None, context: PythonFileContext) -> ast.Name | ast.Attribute | None:
@@ -191,7 +217,7 @@ def _fixed_calls(function: ast.FunctionDef | ast.AsyncFunctionDef, name: str, co
 
 
 def _direct_keyword_call(
-    reference: ast.Name, function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext
+    reference: ast.Name | ast.Attribute, function: ast.FunctionDef | ast.AsyncFunctionDef, context: PythonFileContext
 ) -> bool:
     call = context.parents.get(reference)
     if not isinstance(call, ast.Call) or call.func is not reference or not call.keywords:
@@ -216,6 +242,66 @@ def _direct_keyword_call(
             return False
         parent = context.parents.get(parent)
     return parent is function
+
+
+def _retained_calls(
+    function: ast.FunctionDef | ast.AsyncFunctionDef,
+    owner: ast.ClassDef,
+    receiver: str,
+    name: str,
+    context: PythonFileContext,
+) -> bool:
+    target = _retained_field(function, receiver, name, context)
+    if target is None:
+        return False
+    attributes = [node for node in context.nodes(ast.Attribute) if node.attr == target.attr]
+    if [node for node in attributes if isinstance(node.ctx, ast.Store)] != [target]:
+        return False
+    calls = [node for node in attributes if node is not target]
+    for attribute in calls:
+        match attribute:
+            case ast.Attribute(ctx=ast.Load(), value=ast.Name(id="self")):
+                pass
+            case _:
+                return False
+        method = context.parents.get(attribute)
+        while method is not None and not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            method = context.parents.get(method)
+        if (
+            not isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+            or context.parents.get(method) is not owner
+            or not _direct_keyword_call(attribute, method, context)
+        ):
+            return False
+    return bool(calls)
+
+
+def _retained_field(
+    function: ast.FunctionDef | ast.AsyncFunctionDef, receiver: str, name: str, context: PythonFileContext
+) -> ast.Attribute | None:
+    contents = [node for statement in function.body for node in walk(statement)]
+    references = [node for node in contents if isinstance(node, ast.Name) and node.id == name]
+    if len(references) != 1 or any(_binds_name(node, name) for node in contents):
+        return None
+    reference = references[0]
+    statement = context.parents.get(reference)
+    match statement:
+        case (
+            ast.Assign(targets=[ast.Attribute(value=ast.Name(id=receiver_name), attr=field) as target], value=value)
+            | ast.AnnAssign(target=ast.Attribute(value=ast.Name(id=receiver_name), attr=field) as target, value=value)
+        ):
+            if value is not reference or context.parents.get(statement) is not function:
+                return None
+        case _:
+            return None
+    if (
+        receiver_name != receiver
+        or not field.startswith("_")
+        or field.startswith("__")
+        or any(node.value == field for node in context.nodes(ast.Constant))
+    ):
+        return None
+    return target
 
 
 def _owned_result(
