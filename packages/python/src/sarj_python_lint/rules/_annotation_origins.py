@@ -118,6 +118,21 @@ class AnnotationOrigins:
         return at
 
 
+def annotation_reference(node: ast.expr, context: PythonFileContext) -> bool:
+    child: ast.AST = node
+    parent = context.parents.get(child)
+    while isinstance(parent, ast.Subscript | ast.BinOp | ast.Tuple):
+        child = parent
+        parent = context.parents.get(child)
+    match parent:
+        case ast.arg(annotation=value) | ast.AnnAssign(annotation=value) | ast.TypeAlias(value=value):
+            return value is child
+        case ast.FunctionDef(returns=value) | ast.AsyncFunctionDef(returns=value):
+            return value is child
+        case _:
+            return False
+
+
 def type_parameter_shadow(name: str, at: ast.AST, context: PythonFileContext) -> bool:
     outside: set[ast.AST] = set()
     current = at

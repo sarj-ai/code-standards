@@ -609,7 +609,7 @@ def _record(
     provenance: ResourceProvenance,
     classes: dict[str, ast.ClassDef],
 ) -> _Record | None:
-    required = _record_required(node, context, provenance, classes)
+    required = record_required(node, context, provenance, classes)
     if required is None:
         return None
     fields: dict[str, ast.AnnAssign] = {}
@@ -665,7 +665,7 @@ def _class_annotation_children(
     return [(node.value, False), *((member, symbol != "Literal") for member in members)]
 
 
-def _record_required(
+def record_required(
     node: ast.ClassDef,
     context: PythonFileContext,
     provenance: ResourceProvenance,
@@ -1024,8 +1024,7 @@ def _module_read_escapes(read: ast.Name, context: PythonFileContext) -> bool:
         parent = context.parents.get(current)
         if parent is None:
             return False
-        step = _module_escape_step(parent, current, context)
-        if step is not None:
+        if (step := _module_escape_step(parent, current, context)) is not None:
             return step
         current = parent
     return True
