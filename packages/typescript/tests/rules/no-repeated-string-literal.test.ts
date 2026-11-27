@@ -77,6 +77,36 @@ const COLUMNS = "id, ashby_candidate_id, dataset_id, status, expires_at";
 RULE_TESTER.run("no-repeated-string-literal", rule, {
   valid: [
     {
+      code: [
+        "function a() { return log('list-none cursor-pointer select-none p-5 rounded-lg border'); }",
+        "function b() { return log('list-none cursor-pointer select-none p-5 rounded-lg border'); }",
+      ].join("\n"),
+    },
+    {
+      code: [
+        "function a() { return query(1, 'select id, email, status, created_at from access_member'); }",
+        "function b() { return query(2, 'select id, email, status, created_at from access_member'); }",
+      ].join("\n"),
+    },
+    {
+      code: [
+        "function a() { return notify('Select a plan from the list below to continue with checkout'); }",
+        "function b() { return notify('Select a plan from the list below to continue with checkout'); }",
+      ].join("\n"),
+    },
+    {
+      code: [
+        "function a() { return 'select id, email, status, created_at from access_member'; }",
+        "function b() { return 'select id, email, status, created_at from access_member'; }",
+      ].join("\n"),
+    },
+    {
+      code: [
+        "function a() { return log('pick the columns you want and select them from the menu'); }",
+        "function b() { return log('pick the columns you want and select them from the menu'); }",
+      ].join("\n"),
+    },
+    {
       name: "preserves repeated multiline prompt prose",
       code: "function a() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; } function b() { return 'You are a triage bot.\\nAnswer in one sentence.\\nBe terse.'; }",
     },
@@ -240,6 +270,13 @@ RULE_TESTER.run("no-repeated-string-literal", rule, {
     },
   ],
   invalid: [
+    {
+      code: [
+        "function grant(client) { return client.query('select id, email, status, created_at from access_member where user_id = $1 for update', [1]); }",
+        "function suspend(client) { return client.query('select id, email, status, created_at from access_member where user_id = $1 for update', [2]); }",
+      ].join("\n"),
+      errors: [{ messageId: "noRepeatedStringLiteral" }],
+    },
     {
       name: "reuses the already read primitive constant",
       code: "const QUERY = 'SELECT id, status, created_at FROM candidates'; export function current() { return QUERY; } export function one() { return 'SELECT id, status, created_at FROM candidates'; } export function two() { return 'SELECT id, status, created_at FROM candidates'; }",

@@ -5,6 +5,11 @@ const TESTER = ruleTester({ cwd: FIXTURES });
 
 TESTER.run("no-reduce-accumulator-copy", rule, typed({
   valid: [
+    "declare const calls: string[]; declare function append(done: number[], call: string): Promise<number[]>; calls.reduce<Promise<number[]>>(async (previous, call) => append(await previous, call), Promise.resolve([]));",
+    "declare const calls: string[]; declare function run(call: string): Promise<number>; async function answers() { return calls.reduce<Promise<number[]>>(async (previous, call) => { const done = await previous; done.push(await run(call)); return done; }, Promise.resolve([])); }",
+    "declare const calls: string[]; declare const first: number[]; declare function run(call: string): Promise<number>; async function answers() { return calls.reduce<Promise<number[]>>(async (done, call) => [...(await done), await run(call)], Promise.resolve(first)); }",
+    "declare const calls: string[]; declare function run(call: string): Promise<number>; function answers() { return calls.reduce<Promise<number[]>>((chain, call) => chain.then(async (done) => [...done, await run(call)]), Promise.resolve([])); }",
+    "declare const calls: string[]; function answers(Promise: { resolve(seed: number[]): PromiseLike<number[]> }) { return calls.reduce<PromiseLike<number[]>>(async (done, call) => [...(await done), call.length], Promise.resolve([])); }",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { for (const item of page) { consume(acc.slice()); } return page; }, []);",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => { { const acc: string[] = []; acc.slice(); } return page; }, []);",
     "declare const pages: string[][]; pages.reduce<string[]>((acc, page) => page.slice(), []);",
@@ -26,6 +31,18 @@ TESTER.run("no-reduce-accumulator-copy", rule, typed({
     },
   ],
   invalid: [
+    {
+      name: "reports copies of an awaited accumulator",
+      code: "declare const calls: string[]; declare function run(call: string): Promise<number>; export async function answers(): Promise<number[]> { return calls.reduce<Promise<number[]>>(async (done, call) => [...(await done), await run(call)], Promise.resolve([])); }",
+      output: null,
+      errors: [{ messageId: "copy" }],
+    },
+    {
+      name: "follows a stable awaited accumulator alias",
+      code: "declare const calls: string[]; declare function run(call: string): Promise<number>; export async function answers(): Promise<number[]> { return calls.reduce<Promise<number[]>>(async (previous, call) => { const done = await previous; const next = await run(call); return [...done, next]; }, Promise.resolve([])); }",
+      output: null,
+      errors: [{ messageId: "copy" }],
+    },
     {
       name: "returns the existing fresh identity collection",
       code: "export function collect(): string[] { return ['a', 'b'].reduce<string[]>((acc, item) => [...acc, item], []); }",

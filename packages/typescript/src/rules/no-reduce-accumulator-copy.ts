@@ -41,6 +41,7 @@ interface Candidate {
   readonly callback: Callback;
   readonly accumulator: TsVariable;
   readonly arraySeed: boolean;
+  readonly awaited: boolean;
 }
 
 interface ResolvedDeclaration {
@@ -124,15 +125,16 @@ export default defineRule({
       return declarations.map((declaration, i) => library[i] === true && ARRAY_MEMBER.get(keyOf(declaration!)) === true);
     }
 
-    function inspectCandidate({ node, callback, accumulator, arraySeed }: Candidate): void {
+    function inspectCandidate({ node, callback, accumulator, arraySeed, awaited }: Candidate): void {
       const fix: ReduceFix | null = literalIdentityReduceFix(sourceCode, node);
-      const referencesAccumulator = (value: Node, seen = new Set<Node>()): boolean => {
+      const referencesAccumulator = (value: Node, seen = new Set<Node>(), awaitSeen = !awaited): boolean => {
         value = unwrapExpression(value);
+        if (awaited && value.type === "AwaitExpression") return referencesAccumulator(value.argument, seen, true);
         if (value.type !== "Identifier" || seen.has(value)) return false;
         seen.add(value);
-        if (findVariable(sourceCode.getScope(value), value.name) === accumulator) return true;
+        if (findVariable(sourceCode.getScope(value), value.name) === accumulator) return awaitSeen;
         const local = stableConstInitializer(sourceCode, value);
-        return local !== null && enclosingFunction(local.declaration) === callback && referencesAccumulator(local.value, seen);
+        return local !== null && enclosingFunction(local.declaration) === callback && referencesAccumulator(local.value, seen, awaitSeen);
       };
       const inspect = (current: Node): void => {
         if (current !== callback.body && BOUNDARIES.has(current.type)) return;
@@ -176,11 +178,22 @@ export default defineRule({
         if (node.callee.type !== "MemberExpression" || !REDUCE_METHODS.has(getPropertyName(node.callee) ?? "") ||
           node.arguments.length !== 2) return;
         const [callback, argument] = node.arguments;
-        const seed = emptySeed(argument);
-        if (seed === null || (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression")) return;
+        if (callback?.type !== "ArrowFunctionExpression" && callback?.type !== "FunctionExpression") return;
+        let seed = emptySeed(argument);
+        const awaited = seed === null;
+        if (awaited) {
+          const promise = unwrapExpression(argument!);
+          if (!callback.async || promise.type !== "CallExpression" || promise.optional || promise.arguments.length !== 1 ||
+            promise.arguments[0]?.type === "SpreadElement" || promise.callee.type !== "MemberExpression" ||
+            promise.callee.computed || promise.callee.optional || promise.callee.property.type !== "Identifier" ||
+            promise.callee.property.name !== "resolve" || promise.callee.object.type !== "Identifier" ||
+            promise.callee.object.name !== "Promise" || findVariable(sourceCode.getScope(promise.callee.object), "Promise")?.defs.length) return;
+          seed = emptySeed(promise.arguments[0]);
+        }
+        if (seed === null) return;
         // The original resolves the signature here; it is pure, so the scope checks may run first.
         const accumulator = unwrittenAccumulator(callback);
-        if (accumulator !== null) candidates.push({ node, callback, accumulator, arraySeed: seed === "array" });
+        if (accumulator !== null) candidates.push({ node, callback, accumulator, arraySeed: seed === "array", awaited });
       },
       "Program:exit"() {
         if (candidates.length === 0 || tsrs === null) return;
