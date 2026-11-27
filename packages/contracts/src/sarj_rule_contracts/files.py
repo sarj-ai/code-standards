@@ -87,7 +87,7 @@ def _snapshot(path: Path) -> _Snapshot:
         message = f"safe fixes require a source without privileged permission bits: {path}"
         raise ValueError(message)
     if (
-        hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+        hasattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
             os, "geteuid"
         )
         and before.st_uid != os.geteuid()
@@ -113,7 +113,7 @@ def _snapshot(path: Path) -> _Snapshot:
 
 
 def _refuse_extended_attributes(descriptor: int) -> None:
-    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+    if not hasattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
         os, "listxattr"
     ):
         return
@@ -130,7 +130,7 @@ def _refuse_extended_attributes(descriptor: int) -> None:
 def _preserve_group(descriptor: int, group: int) -> None:
     if os.fstat(descriptor).st_gid == group:
         return
-    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+    if not hasattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
         os, "fchown"
     ):
         message = "safe fixes cannot preserve source group ownership on this platform"
@@ -142,7 +142,7 @@ def _preserve_group(descriptor: int, group: int) -> None:
 
 
 def _preserve_mode(descriptor: int, mode: int) -> None:
-    if not hasattr(  # sarj-noqa: SARJ499 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
+    if not hasattr(  # sarj-noqa: SARJ557 -- Probe optional OS capabilities while preserving source ownership, permissions, and safe-open behavior.
         os, "fchmod"
     ):
         message = "safe fixes require descriptor-based permission preservation"

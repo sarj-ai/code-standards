@@ -250,7 +250,6 @@ from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
-from sarj_python_lint.rules.no_hasattr import NoHasattr
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_injected_dependency_close import NoInjectedDependencyClose
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
@@ -399,7 +398,6 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoSlashCollectionRootUnderPrefix.id: NoSlashCollectionRootUnderPrefix,
         NoWorkVerbGetRoute.id: NoWorkVerbGetRoute,
         NoCreateVerbInPostPath.id: NoCreateVerbInPostPath,
-        NoHasattr.id: NoHasattr,
         NoFoldedBadRequestNotFound.id: NoFoldedBadRequestNotFound,
         NoDefaultedEnvironmentSetting.id: NoDefaultedEnvironmentSetting,
         NoDuplicateFieldValidatorBody.id: NoDuplicateFieldValidatorBody,

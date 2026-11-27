@@ -2445,10 +2445,10 @@ def _wait_for_process(
 def _leader_exited(process: subprocess.Popen[bytes]) -> bool | None:
     if (
         os.name == "posix"
-        and hasattr(  # sarj-noqa: SARJ499 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
+        and hasattr(  # sarj-noqa: SARJ557 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
             os, "waitid"
         )
-        and hasattr(  # sarj-noqa: SARJ499 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
+        and hasattr(  # sarj-noqa: SARJ557 -- Probe optional POSIX wait APIs before preserving an unreaped process-group leader.
             os, "WNOWAIT"
         )
     ):
