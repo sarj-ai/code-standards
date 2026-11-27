@@ -247,6 +247,7 @@ from sarj_python_lint.rules.no_defaulted_environment_setting import NoDefaultedE
 from sarj_python_lint.rules.no_discarded_tagged_outcome import NoDiscardedTaggedOutcome
 from sarj_python_lint.rules.no_duplicate_field_validator_body import NoDuplicateFieldValidatorBody
 from sarj_python_lint.rules.no_dynamic_builtins import NoDynamicBuiltins
+from sarj_python_lint.rules.no_enum_literal_comparison import NoEnumLiteralComparison
 from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTextIn500Detail
 from sarj_python_lint.rules.no_failure_conflated_with_absence import NoFailureConflatedWithAbsence
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
@@ -329,6 +330,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoEnumLiteralComparison.id: NoEnumLiteralComparison,
         PreferDecimalMoney.id: PreferDecimalMoney,
         NoHttpExceptionInServices.id: NoHttpExceptionInServices,
         RequireStrictPydanticModel.id: RequireStrictPydanticModel,

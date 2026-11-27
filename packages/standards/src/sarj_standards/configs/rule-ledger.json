@@ -78,6 +78,7 @@
       "no-duplicate-dunder-all-entry",
       "no-duplicate-field-validator-body",
       "no-dynamic-builtins",
+      "no-enum-literal-comparison",
       "no-exception-text-in-500-detail",
       "no-excessive-cognitive-complexity",
       "no-failure-conflated-with-absence",
@@ -786,7 +787,8 @@
       "SARJ608",
       "SARJ609",
       "SARJ610",
-      "SARJ611"
+      "SARJ611",
+      "SARJ612"
     ],
     "sql": [
       "SARJ101",

@@ -397,5 +397,6 @@
   "SARJ608": "no-nominal-rebrand",
   "SARJ609": "require-strict-pydantic-model",
   "SARJ610": "no-http-exception-in-services",
-  "SARJ611": "prefer-decimal-money"
+  "SARJ611": "prefer-decimal-money",
+  "SARJ612": "no-enum-literal-comparison"
 }

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "65a38ba1f7abe19ba42e14123154a6987cb97210b4231659488f7e5fb8819575",
-  "cliSha256": "a5f5c3aacb56a096a2f7535d9e2f7adf8fb9e043875211d46fa70af2e42c0186",
+  "catalogSha256": "8a99047f0702ed96a71f91297ed036af63453344ee9e86452fdc1719c780abe4",
+  "cliSha256": "dcf7a060b39bc133fac5d6aa3d902e00b778524a9d617a7823904446f16352f0",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -14634,6 +14634,41 @@
           "outcome": "accept",
           "scenarioId": "hasattr",
           "title": "A typed parameter states which attributes exist"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-enum-literal-comparison": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "from enum import StrEnum\n\n\nclass Action(StrEnum):\n    BUILD = \"build\"\n\n\ndef is_build(action: Action) -> bool:\n    return action == Action.BUILD\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "named-member",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A named enum member anchors the comparison"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "case.py",
+              "source": "from enum import StrEnum\n\n\nclass Action(StrEnum):\n    BUILD = \"build\"\n\n\ndef is_build(action: Action) -> bool:\n    return action == \"build\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "case.py",
+          "id": "raw-string",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A raw string repeats an enum value"
         }
       ],
       "optionsSchemaSource": null

@@ -3943,6 +3943,14 @@
       "state": "pending",
       "evidence": "Isolated replay over 115 immutable Python files found 202 warnings, including two generic measurement parameters named amount. The replay covered every labeled monetary location and left 115 sampled near-miss locations quiet. Money advice superseded 58 generic warnings at the same field and preserved the other 271 existing findings. Three alternating baseline/candidate pairs measured cold/warm analysis medians of 10.155/11.170 seconds and 9.738/10.430 seconds, with median peak child RSS of 109,196/109,744 KiB. Wall times varied with shared VM contention. Private source and identifying provenance remain outside the published artifact.",
       "outcome": "Ship SARJ611 at WARNING with no autofix. Confirm monetary intent before migrating and preserve the agreed serialization format. Integer minor units and domain types remain valid. Broader calibration remains pending."
+    },
+    {
+      "task": "rule-audit/python/no-enum-literal-comparison",
+      "family": "python",
+      "ruleId": "no-enum-literal-comparison",
+      "state": "pending",
+      "evidence": "Across an 83-file sample from five pinned Python source snapshots, the isolated replay found 11 of 12 labelled positives and left all four labelled near misses unreported. The missed comparison used an inferred local type. Existing enum controls had no overlapping findings. Three paired runs with project indexing in both configurations measured median process times of 13.68 s and 16.52 s before and after adding the rule.",
+      "outcome": "Introduce SARJ612 at WARNING without autofix. Resolve declared enum types and named enum member values before reporting raw comparisons. Leave generated code, custom equality, and opaque SQL-style expressions outside the rule's scope."
     }
   ]
 }
