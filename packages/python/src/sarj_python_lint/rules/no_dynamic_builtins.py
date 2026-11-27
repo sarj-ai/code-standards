@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 _BANNED_NAMES = frozenset(
-    {"locals", "globals", "compile", "__import__", "delattr", "getattr", "exec", "eval", "breakpoint"}
+    {"locals", "globals", "compile", "__import__", "delattr", "getattr", "setattr", "exec", "eval", "breakpoint"}
 )
 
 
@@ -34,7 +34,7 @@ class NoDynamicBuiltins(Rule):
         default_level=Severity.ERROR,
         summary="Use explicit typed state instead of dynamic Python builtin access.",
         rationale=(
-            "Dynamic namespace inspection, source compilation, and string-based attribute access hide dependencies "
+            "Dynamic namespace inspection, source compilation, and string-based attribute reads and writes hide dependencies "
             "from type checking and refactoring. The strict policy also rejects executor/debugger references that "
             "can otherwise escape their native call checks through an alias."
         ),
@@ -45,7 +45,7 @@ class NoDynamicBuiltins(Rule):
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Ruff S307, S102, T100, B009, B043 and qualified/imported banned-api checks retain their native owners; this rule closes bare-name and simple module-alias gaps.",
+            "Ruff covers eval, exec, debugger calls, constant attribute operations, and qualified or imported banned APIs. This rule closes bare-name and simple module-alias gaps.",
             "Locally shadowed names and unrelated methods are accepted. Arbitrary dictionary/reflection lookups and complex rebinding are not reconstructed.",
         ),
         examples=(

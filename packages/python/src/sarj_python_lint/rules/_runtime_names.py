@@ -48,7 +48,7 @@ _NATIVE_NAMES = frozenset(
     }
 )
 
-_RUFF_BANNED_API = frozenset({"locals", "globals", "compile", "__import__", "getattr", "hasattr", "delattr"})
+_RUFF_BANNED_API = frozenset({"locals", "globals", "compile", "__import__", "getattr", "hasattr", "setattr", "delattr"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,22 +144,25 @@ class RuntimeNames:
             return isinstance(node, ast.Name) or direct_import
         if isinstance(node, ast.Attribute) or parent.keywords:
             return False
-        match parent.args:
-            case [receiver, ast.Constant(value=str() as value)]:
-                if name == "getattr" and isinstance(receiver, ast.Starred):
-                    return False
+        match name, parent.args:
+            case ("delattr", [receiver, ast.Constant(value=str() as value)]) | (
+                "setattr",
+                [receiver, ast.Constant(value=str() as value), _],
+            ):
+                return self._native_attribute_statement_owner(parent, receiver, value)
+            case "hasattr", [_, ast.Constant(value="__call__")]:
+                return True
+            case "getattr", [receiver, ast.Constant(value=str() as value)]:
+                return (
+                    not isinstance(receiver, ast.Starred)
+                    and value.isidentifier()
+                    and not keyword.iskeyword(value)
+                    and (not value.startswith("__") or value.endswith("__"))
+                )
             case _:
                 return False
-        if name == "hasattr":
-            return value == "__call__"
-        if name == "delattr":
-            return self._native_delattr_owner(parent, receiver, value)
-        if name != "getattr":
-            return False
-        mangled = value.startswith("__") and not value.endswith("__")
-        return value.isidentifier() and not keyword.iskeyword(value) and not mangled
 
-    def _native_delattr_owner(self, call: ast.Call, receiver: ast.expr, value: str) -> bool:
+    def _native_attribute_statement_owner(self, call: ast.Call, receiver: ast.expr, value: str) -> bool:
         statement = self.context.parents.get(call)
         return (
             isinstance(statement, ast.Expr)

@@ -260,6 +260,7 @@ warns-extend-require-match-for = [
 "builtins.__import__".msg = "Use explicit Python imports."
 "builtins.getattr".msg = "Use declared typed attributes or a typed mapping; a required plugin boundary needs an explained local suppression."
 "builtins.hasattr".msg = "Narrow the type or use an explicit contract; required feature detection needs an explained local suppression."
+"builtins.setattr".msg = "Use declared typed attributes or a typed mapping. A required runtime boundary needs an explained local suppression."
 "builtins.delattr".msg = "Represent state explicitly instead of deleting attributes dynamically."
 
 "unittest.mock.Mock".msg              = "Prefer real fixtures or hand-rolled fakes implementing the relevant ABC. If a mock is genuinely required, import with `# noqa: TID251 — <reason>`."
@@ -286,6 +287,9 @@ warns-extend-require-match-for = [
 "pydantic.alias_generators.to_camel".msg = "Don't camelCase API contracts in the backend. Keep snake_case; transform on the frontend with Zod."
 "typing.cast".msg                     = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
 "typing_extensions.cast".msg          = "Prefer discriminated unions or `isinstance` narrowing over `cast`."
+"typing.no_type_check".msg            = "Keep functions type checked with precise annotations and narrowly scoped, explained suppressions for individual diagnostics."
+"typing_extensions.no_type_check".msg = "Keep functions type checked with precise annotations and narrowly scoped, explained suppressions for individual diagnostics."
+"typing.no_type_check_decorator".msg  = "Annotate the decorator so the checker retains the decorated function's type contract."
 "pydantic.TypeAdapter".msg            = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json; use psycopg class_row for database rows. Generic schema infrastructure requires a local, reasoned TID251 suppression."
 "pydantic.type_adapter.TypeAdapter".msg = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json; use psycopg class_row for database rows. Generic schema infrastructure requires a local, reasoned TID251 suppression."
 "pydantic.parse_obj_as".msg           = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json. Generic schema infrastructure or a required compatibility boundary needs a local, reasoned TID251 suppression."
