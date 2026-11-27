@@ -3237,14 +3237,6 @@
       "outcome": "SARJ545: Stage at WARNING without autofix. Treat distinct-relation joins as architecture review candidates; preserve atomicity, consistency, lock scope, and justified database joins. Full campaign completion is not claimed."
     },
     {
-      "task": "rule-audit/python/store-mutation-command-fanout",
-      "family": "python",
-      "ruleId": "store-mutation-command-fanout",
-      "state": "pending",
-      "evidence": "2026-10-28 bounded SQL/model review. Focused examples and regressions cover model write commands beside mutation-method fanout, delegation, distinct contracts, unsupported method shapes, and exact suppressions. The shared immutable 35-file comparison against published 8.147.0 reports 71 reviewed additions, zero removals or duplicates, and six repaired false-positive controls clear across the affected owners. These aggregate observations are not per-rule precision or recall estimates. Broader field calibration remains pending. Fresh-context ten-pass follow-up 2026-10-29: paired probes cover effective method identity, bounded same-class delegation and per-owner fact reuse without asserting write equivalence. Existing severity/autofix and calibration state are retained; bounded synthetic and fixture evidence does not establish field precision, recall or fleet performance.",
-      "outcome": "SARJ546: Stage at WARNING without autofix. Review consolidation around the existing model write command while preserving update-only, partial-update, concurrency, and distinct command semantics. Full campaign completion is not claimed."
-    },
-    {
       "task": "rule-audit/python/store-insert-requires-explicit-conflict-policy",
       "family": "python",
       "ruleId": "store-insert-requires-explicit-conflict-policy",

@@ -20,7 +20,9 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_semantics import AnnotationSemantics, scope_bound_names
+from sarj_python_lint.rules._resource_provenance import import_name_for_binding
 from sarj_python_lint.rules._sql import is_store_module
+from sarj_python_lint.rules._store_sql import StoreQuery, relation_key, sql_child, store_queries
 from sarj_python_lint.rules._store_writes import (
     StoreOwners,
     executed_queries,
@@ -35,7 +37,12 @@ from sarj_python_lint.rules._store_writes import (
 )
 
 
+_MAX_UPSERT_CALL_DEPTH = 3
+
+
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     from sarj_python_lint._file_context import PythonFileContext
     from sarj_python_lint.rules._imports import ImportIndex
     from sarj_python_lint.rules._store_writes import Function
@@ -43,14 +50,25 @@ if TYPE_CHECKING:
 
 _BAD = "from pydantic import BaseModel\nclass UserInput(BaseModel):\n    id: str\n    name: str\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute('INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name', (data.id, data.name))\n    async def set_name(self, id_: str, name: str) -> User:\n        await self.cursor.execute('UPDATE users SET name = %s WHERE id = %s', (name, id_))\n"
 
+_FANOUT_BAD = """from psycopg import AsyncCursor
+class ItemStore:
+    def __init__(self, cursor: AsyncCursor):
+        self.cursor = cursor
+    async def upsert(self, item):
+        await self.cursor.execute('INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name', (item.id, item.name))
+    async def set_name_before_start(self, key, name):
+        await self.cursor.execute('UPDATE item SET name=%s WHERE id=%s AND started_at IS NULL', (name, key))
+"""
+
 
 @final
 class StoreFieldUpdateReusesUpsert(Rule):
     id = "store-field-update-reuses-upsert"
     code = "SARJ517"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
+        aliases=("store-mutation-command-fanout",),
         default_level=Severity.WARNING,
-        summary="A plain field UPDATE duplicates fields already writable through the store's upsert command.",
+        summary="Review per-field store setters beside the store's upsert command; a plain field UPDATE duplicates fields it already writes.",
         rationale="Independent per-field SQL methods duplicate write policy and can drift from the existing model command's validation, conflict handling and timestamps.",
         remediation="Prefer one typed model command for ordinary writable fields. Reuse or extend its write implementation while preserving update-only, missing-row, omission/null, authorization and concurrency contracts; retain domain transitions as separate operations.",
         category=RuleCategory.MAINTAINABILITY,
@@ -61,6 +79,9 @@ class StoreFieldUpdateReusesUpsert(Rule):
             "The finding is a consolidation review, not proof that INSERT ON CONFLICT preserves update-only behavior. A missing row must not be created accidentally; omitted fields must not be overwritten by defaults.",
             "Context-manager behavior and other surrounding effects are not proven equivalent. Share ordinary write implementation behind existing authorization or transaction wrappers while preserving those contracts.",
             "Generated and test sources are excluded. There is no automatic replacement and no requirement to expose immutable or privileged model fields.",
+            "This is API consolidation advice, not proof that writes are equivalent. Checks non-test store modules with an upsert-named command reaching an INSERT and a set_-named direct UPDATE of the same exactly qualified relation. A bounded direct same-class helper call can establish that INSERT target; the command name does not prove conflict handling. Dynamic relation names, inherited upserts, unknown decorators or receivers, unknown owners and unrelated relations abstain. Duplicate or overwritten declarations and direct method attribute assignments are excluded; indirect runtime monkey-patching remains unsupported.",
+            "Also reviews source-visible abstract set_ methods declared beside an abstract upsert in a store interface. The explicit setter API spelling triggers this interface policy; it does not prove the method is redundant or identify its implementation.",
+            "The duplicate-field finding takes precedence at the same method; guarded and multi-statement setters can still be reported for review, one diagnostic per method, with no automatic edit.",
         ),
         examples=(
             RuleExample(
@@ -88,44 +109,97 @@ class StoreFieldUpdateReusesUpsert(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="conditional-setter",
+                scenario="setter-review",
+                title="Review a separate guarded setter",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.python("app/item_store.py", _FANOUT_BAD),),
+                focus_path=PurePosixPath("app/item_store.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="different-relation",
+                scenario="setter-review",
+                title="Different relation ownership is preserved",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python("app/item_store.py", _FANOUT_BAD.replace("UPDATE item SET", "UPDATE other SET")),
+                ),
+                focus_path=PurePosixPath("app/item_store.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if (
-            context.generated
-            or not is_store_module(context.path)
-            or "upsert" not in context.symbol_source
-            or context.tree is None
-        ):
+        if context.generated or not is_store_module(context.path) or context.tree is None:
             return []
-        owners = StoreOwners(context)
-        findings: list[Diagnostic] = []
-        for owner in (node for node in context.tree.body if isinstance(node, ast.ClassDef)):
-            if owner.keywords:
+        findings = [
+            Diagnostic(
+                path=context.path,
+                line=method.lineno,
+                col=method.col_offset + 1,
+                code=self.code,
+                severity=Severity.WARNING,
+                message=f"`{method.name}` repeats fields already writable by `upsert`; consolidate the ordinary write command while preserving update-only/missing-row, omission/null, authorization and concurrency behavior.",
+            )
+            for method in _duplicate_field_setters(context)
+            if not context.suppressions.is_suppressed(method.lineno, self.code)
+        ]
+        queries = tuple(store_queries(context))
+        declared = _declared_methods(context)
+        upserts = _upsert_relations(queries, declared, context)
+        selected: set[Function] = set()
+        for query in queries:
+            if (
+                query.method is None
+                or query.owner is None
+                or not query.method.name.startswith("set_")
+                or declared.get(query.owner, {}).get(query.method.name) is not query.method
+                or not _instance_method(query.method, context)
+            ):
                 continue
-            declared = methods(owner)
-            upsert = declared.get("upsert")
-            contract = _upsert_contract(upsert, owners, context) if upsert is not None else None
-            if contract is None:
-                continue
-            for method in _redundant_updates(declared, contract, context, owners):
-                name = method.name
-                if context.suppressions.is_suppressed(method.lineno, self.code):
+            match query.statement:
+                case exp.Update() as statement if relation_key(sql_child(statement, "this")) in upserts.get(
+                    query.owner, set()
+                ):
+                    selected.add(query.method)
+                case _:
                     continue
-                findings.append(
-                    Diagnostic(
-                        path=context.path,
-                        line=method.lineno,
-                        col=method.col_offset + 1,
-                        code=self.code,
-                        severity=Severity.WARNING,
-                        message=f"`{name}` repeats fields already writable by `upsert`; consolidate the ordinary write command while preserving update-only/missing-row, omission/null, authorization and concurrency behavior.",
-                    )
-                )
+        selected.update(_abstract_setters(context, declared))
+        precise = {finding.line for finding in findings}
+        findings.extend(
+            Diagnostic(
+                context.path,
+                method.lineno,
+                method.col_offset + 1,
+                self.code,
+                f"Review `{method.name}` beside the model upsert; consolidate the typed mutation surface where possible while preserving its missing-row, authorization, transaction and concurrency contract.",
+                severity=Severity.WARNING,
+            )
+            for method in sorted(selected, key=lambda node: (node.lineno, node.col_offset))
+            if method.lineno not in precise
+        )
         return findings
+
+
+def _duplicate_field_setters(context: PythonFileContext) -> Iterator[Function]:
+    if context.tree is None or "upsert" not in context.symbol_source:
+        return
+    owners = StoreOwners(context)
+    for owner in (node for node in context.tree.body if isinstance(node, ast.ClassDef)):
+        if owner.keywords:
+            continue
+        declared = methods(owner)
+        upsert = declared.get("upsert")
+        contract = _upsert_contract(upsert, owners, context) if upsert is not None else None
+        if contract is not None:
+            yield from _redundant_updates(declared, contract, context, owners)
 
 
 @dataclass(frozen=True)
@@ -472,3 +546,130 @@ def _bound_column(node: exp.Expr) -> str | None:
         if isinstance(node, exp.EQ) and isinstance(left, exp.Column) and isinstance(right, exp.Placeholder)
         else None
     )
+
+
+def _upsert_relations(
+    queries: tuple[StoreQuery, ...], declared: dict[ast.ClassDef, dict[str, Function]], context: PythonFileContext
+) -> dict[ast.ClassDef, set[tuple[str, ...]]]:
+    upserts: dict[ast.ClassDef, set[tuple[str, ...]]] = {}
+    reachable = {owner: _upsert_methods(value, context) for owner, value in declared.items()}
+    for query in queries:
+        match query:
+            case StoreQuery(owner=owner, method=method, statement=exp.Insert() as statement) if (
+                owner is not None and method in reachable.get(owner, set())
+            ):
+                relation = sql_child(statement, "this")
+                match relation:
+                    case exp.Schema():
+                        relation = sql_child(relation, "this")
+                    case _:
+                        pass
+                if (key := relation_key(relation)) is not None:
+                    upserts.setdefault(owner, set()).add(key)
+            case _:
+                continue
+    return upserts
+
+
+def _abstract_setters(context: PythonFileContext, owners: dict[ast.ClassDef, dict[str, Function]]) -> set[Function]:
+    result: set[Function] = set()
+    for declared in owners.values():
+        upsert = declared.get("upsert")
+        if upsert is None or not _abstract(upsert, context):
+            continue
+        result.update(
+            method for name, method in declared.items() if name.startswith("set_") and _abstract(method, context)
+        )
+    return result
+
+
+def _abstract(method: Function, context: PythonFileContext) -> bool:
+    return _instance_method(method, context) and any(
+        _runtime_import_name(decorator, context) == "abc.abstractmethod" for decorator in method.decorator_list
+    )
+
+
+def _upsert_methods(declared: dict[str, Function], context: PythonFileContext) -> set[Function]:
+    upsert = declared.get("upsert")
+    if upsert is None or not _instance_method(upsert, context):
+        return set()
+    reachable = {upsert}
+    for _ in range(_MAX_UPSERT_CALL_DEPTH):
+        discovered = {
+            declared[node.func.attr]
+            for method in reachable
+            for node in own_nodes(method)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "self"
+            and node.func.attr in declared
+            and _instance_method(declared[node.func.attr], context)
+            and context.static_resource_provenance.runtime_binding("self", node)
+            is [*method.args.posonlyargs, *method.args.args][0]
+        }
+        if discovered <= reachable:
+            break
+        reachable.update(discovered)
+    return reachable
+
+
+def _declared_methods(context: PythonFileContext) -> dict[ast.ClassDef, dict[str, Function]]:
+    declared = {
+        owner: methods(owner)
+        for owner in context.nodes(ast.ClassDef)
+        if not owner.keywords
+        and all(
+            _runtime_import_name(decorator, context) in {"typing.final", "typing_extensions.final"}
+            for decorator in owner.decorator_list
+        )
+    }
+    for node in context.nodes(ast.Attribute):
+        match node:
+            case ast.Attribute(ctx=ast.Store() | ast.Del(), value=ast.Name(id=name)):
+                match context.static_resource_provenance.runtime_binding(name, node):
+                    case ast.ClassDef() as binding if binding in declared:
+                        declared[binding].pop(node.attr, None)
+                    case _:
+                        pass
+            case _:
+                continue
+    return declared
+
+
+def _instance_method(method: Function, context: PythonFileContext) -> bool:
+    positional = [*method.args.posonlyargs, *method.args.args]
+    return (
+        bool(positional)
+        and positional[0].arg == "self"
+        and all(
+            _runtime_import_name(decorator, context)
+            in {
+                "abc.abstractmethod",
+                "typing.override",
+                "typing_extensions.override",
+                "typing.final",
+                "typing_extensions.final",
+            }
+            for decorator in method.decorator_list
+        )
+    )
+
+
+def _runtime_import_name(expression: ast.expr, context: PythonFileContext) -> str | None:
+    root = expression
+    while isinstance(root, ast.Attribute):
+        root = root.value
+    provenance = context.static_resource_provenance
+    match root:
+        case ast.Name(id=name) if not (
+            provenance.wildcard or provenance.dynamic_namespace or name in provenance.mutated
+        ):
+            binding = provenance.runtime_binding(name, expression)
+        case _:
+            return None
+    match binding:
+        case ast.alias():
+            return import_name_for_binding(expression, binding, context.parents.get(binding))
+        case _:
+            return None

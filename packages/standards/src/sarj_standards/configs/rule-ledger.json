@@ -264,7 +264,6 @@
       "store-field-update-reuses-upsert",
       "store-get-delegates-to-bulk-read",
       "store-insert-requires-explicit-conflict-policy",
-      "store-mutation-command-fanout",
       "subprocess-kill-without-reap",
       "test-without-explicit-oracle",
       "timestamp-order-requires-tiebreaker",
@@ -724,7 +723,6 @@
       "SARJ543",
       "SARJ544",
       "SARJ545",
-      "SARJ546",
       "SARJ547",
       "SARJ548",
       "SARJ549",
@@ -1310,6 +1308,13 @@
       "note": "Replace SARJ518 suppressions and baselines with SARJ560; no-psycopg-execution-in-loop owns the same findings."
     },
     {
+      "id": "SARJ546",
+      "kind": "code",
+      "status": "renamed",
+      "replacement": "SARJ517",
+      "note": "Replace SARJ546 suppressions and baselines with SARJ517; store-field-update-reuses-upsert owns the same findings."
+    },
+    {
       "id": "SARJ581",
       "kind": "code",
       "status": "removed",
@@ -1889,6 +1894,13 @@
       "status": "renamed",
       "replacement": "replay-contract-insert-requires-duplicate-policy",
       "note": "Replace sarj-store-insert-requires-on-conflict with sarj-replay-contract-insert-requires-duplicate-policy before upgrading."
+    },
+    {
+      "id": "store-mutation-command-fanout",
+      "kind": "python",
+      "status": "renamed",
+      "replacement": "store-field-update-reuses-upsert",
+      "note": "Replace sarj-store-mutation-command-fanout with sarj-store-field-update-reuses-upsert before upgrading."
     },
     {
       "id": "tautological-mock-assertion",

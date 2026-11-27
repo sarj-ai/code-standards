@@ -316,7 +316,6 @@ from sarj_python_lint.rules.store_field_update_reuses_upsert import StoreFieldUp
 from sarj_python_lint.rules.store_insert_requires_explicit_conflict_policy import (
     StoreInsertRequiresExplicitConflictPolicy,
 )
-from sarj_python_lint.rules.store_mutation_command_fanout import StoreMutationCommandFanout
 from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOracle
 
 
@@ -367,7 +366,6 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoAsyncClientInConstructor.id: NoAsyncClientInConstructor,
         NoDiscardedTaggedOutcome.id: NoDiscardedTaggedOutcome,
         StoreInsertRequiresExplicitConflictPolicy.id: StoreInsertRequiresExplicitConflictPolicy,
-        StoreMutationCommandFanout.id: StoreMutationCommandFanout,
         PreferApplicationModelJoins.id: PreferApplicationModelJoins,
         NoRecordingStore.id: NoRecordingStore,
         NoRedundantSqlAlias.id: NoRedundantSqlAlias,
