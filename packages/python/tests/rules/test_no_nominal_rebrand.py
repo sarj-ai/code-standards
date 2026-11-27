@@ -70,8 +70,10 @@ def test_source_proven_rebrands(declarations: str, source: str, expected: int) -
     ("imports", "annotation", "constructor", "expected"),
     [
         ("from app.ids import OrgId as Organization, UserId", "Organization", "UserId", 1),
+        ("from app.ids import OrgId as Organization, UserId as User", "Organization", "User", 1),
         ("import app.ids as ids", "ids.OrgId", "ids.UserId", 1),
         ("from .ids import OrgId, UserId", "OrgId", "UserId", 1),
+        ("try:\n    load_ids()\nexcept ImportError:\n    from .ids import OrgId, UserId", "OrgId", "UserId", 1),
         ("from app.ids import OrgId\nfrom elsewhere import UserId", "OrgId", "UserId", 0),
         ("from app.ids import UserId as Origin, UserId as Target", "Origin", "Target", 0),
     ],
@@ -101,6 +103,27 @@ def test_first_party_module_at_distribution_root(tmp_path: Path) -> None:
     consumer = tmp_path / "consumer.py"
     consumer.write_text("from ids import OrgId, UserId\n" + _REBRAND, encoding="utf-8")
     assert [finding.code for finding in analyze([NoNominalRebrand.id], [consumer])] == [NoNominalRebrand.code]
+
+
+def test_ordinary_module_can_make_a_nominal_provider_ambiguous(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "fixture"\n', encoding="utf-8")
+    (tmp_path / "ids.py").write_text(_DECLARATIONS, encoding="utf-8")
+    (tmp_path / "ids").mkdir()
+    (tmp_path / "ids" / "__init__.py").write_text('version = "1"\n', encoding="utf-8")
+    consumer = tmp_path / "consumer.py"
+    consumer.write_text("from ids import OrgId, UserId\n" + _REBRAND, encoding="utf-8")
+
+    assert analyze([NoNominalRebrand.id], [consumer]) == []
+
+
+def test_next_scan_observes_new_codegen_marker(tmp_path: Path) -> None:
+    client = tmp_path / "sdk" / "models" / "client.py"
+    client.parent.mkdir(parents=True)
+    client.write_text(_DECLARATIONS + _REBRAND, encoding="utf-8")
+    assert [finding.code for finding in analyze([NoNominalRebrand.id], [client])] == [NoNominalRebrand.code]
+
+    (tmp_path / "sdk" / "codegen.yml").touch()
+    assert analyze([NoNominalRebrand.id], [client]) == []
 
 
 @pytest.mark.parametrize("example", NoNominalRebrand.public_examples())

@@ -8,6 +8,7 @@ from sarj_python_lint.rules._fastapi_access import FastapiAccessFacts
 from sarj_python_lint.rules._first_party import FirstPartyFacts
 from sarj_python_lint.rules._local_source import LocalSourceFacts
 from sarj_python_lint.rules._nominal_project import NominalProjectFacts
+from sarj_python_lint.rules._paths import GeneratedPathFacts
 
 
 if TYPE_CHECKING:
@@ -26,5 +27,6 @@ class AnalysisSession:
             LocalSourceFacts() if source_inputs is None else LocalSourceFacts(source_inputs=source_inputs)
         )
         self.python_target = PythonTargetFacts()
-        self.nominal_project = NominalProjectFacts()
+        self.generated_paths = GeneratedPathFacts()
+        self.nominal_project = NominalProjectFacts(self.generated_paths)
         self.feature_flags = FeatureFlagFacts()

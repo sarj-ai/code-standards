@@ -23,6 +23,7 @@ from sarj_python_lint.rules._ast_index import (
     NodeIndex,
     SharedModule,
     children,
+    import_statements,
     nodes,
     parent_map,
     share_module,
@@ -1106,7 +1107,7 @@ def _runtime_dependency_modules(unit: SourceUnit) -> frozenset[str]:
         return frozenset()
     package = (unit.module or "") if unit.path.name == "__init__.py" else (unit.module or "").rpartition(".")[0]
     dependencies: set[str] = set()
-    for statement in _runtime_import_statements(unit.tree):
+    for statement in import_statements(unit.tree):
         match statement:
             case ast.Import(names=aliases):
                 for alias in aliases:
@@ -1129,25 +1130,12 @@ def _runtime_import_origins(
         statements = (
             nodes(unit.tree, ast.Import, ast.ImportFrom, index=node_index)
             if node_index is not None
-            else _runtime_import_statements(unit.tree)
+            else import_statements(unit.tree)
         )
         for node in statements:
             for name, symbol in _statement_import_origins(node, package).items():
                 origins.setdefault(name, set()).add(symbol)
     return {name: frozenset(symbols) for name, symbols in origins.items()}
-
-
-def _runtime_import_statements(tree: ast.Module) -> Iterator[ast.Import | ast.ImportFrom]:
-    queue: list[ast.AST] = [tree]
-    offset = 0
-    while offset < len(queue):
-        current = queue[offset]
-        offset += 1
-        if isinstance(current, ast.Import | ast.ImportFrom):
-            yield current
-        queue.extend(
-            child for child in children(current) if isinstance(child, ast.stmt | ast.ExceptHandler | ast.match_case)
-        )
 
 
 def _statement_import_origins(node: ast.Import | ast.ImportFrom, package: str) -> dict[str, SymbolRef]:
@@ -1262,7 +1250,7 @@ def _type_provider_facts(tree: ast.Module, *, known_roots: frozenset[str] = froz
     imports = ImportIndex.from_tree(tree)
     opaque = any(
         isinstance(statement, ast.ImportFrom) and any(alias.name == "*" for alias in statement.names)
-        for statement in _runtime_import_statements(tree)
+        for statement in import_statements(tree)
     )
     return _TypeProviderFacts(imports, opaque or _type_provider_imports_escape(tree, imports, known_roots=known_roots))
 
@@ -1295,7 +1283,7 @@ def _type_provider_roots(tree: ast.Module, imports: ImportIndex) -> frozenset[st
     }
     roots.update(
         name
-        for statement in _runtime_import_statements(tree)
+        for statement in import_statements(tree)
         for name, symbol in _statement_import_origins(statement, "").items()
         if _type_provider_origin(symbol)
     )

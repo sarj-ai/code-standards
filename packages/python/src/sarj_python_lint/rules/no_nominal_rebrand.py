@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import PurePosixPath
@@ -20,7 +21,9 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
+from sarj_python_lint.rules._ast_index import import_statements
 from sarj_python_lint.rules._domain_boundaries import NEW_TYPE_ORIGINS
+from sarj_python_lint.rules._nominal_project import NominalScope, nominal_constructor_names, nominal_factory_call
 from sarj_python_lint.rules._resource_provenance import import_name_for_binding
 
 
@@ -85,15 +88,17 @@ class NoNominalRebrand(Rule):
 
     @override
     def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
-        if context.generated or context.tree is None:
+        if context.generated or (tree := context.tree) is None:
+            return []
+        bindings = _NominalBindings(context, tree)
+        if not bindings.might_call_constructor():
+            return []
+        if "NewType" not in context.symbol_source and not bindings.imports_nominal_source():
             return []
         if not (
             context.nodes(ast.AnnAssign)
             or any(parameter.annotation is not None for parameter in context.nodes(ast.arg))
         ):
-            return []
-        bindings = _NominalBindings(context)
-        if "NewType" not in context.symbol_source and not bindings.imports_nominal_source():
             return []
         findings: list[Diagnostic] = []
         for call in context.nodes(ast.Call):
@@ -102,10 +107,7 @@ class NoNominalRebrand(Rule):
             [value] = call.args
             if not isinstance(value, ast.Name | ast.Attribute):
                 continue
-            source = bindings.annotation_brand(value)
-            if source is None or (target := bindings.brand(call.func, call.func, runtime=True)) is None:
-                continue
-            if source.declaration is target.declaration or source.carrier != target.carrier:
+            if (message := bindings.rebrand_message(call.func, value)) is None:
                 continue
             findings.append(
                 Diagnostic(
@@ -113,8 +115,7 @@ class NoNominalRebrand(Rule):
                     call.lineno,
                     call.col_offset + 1,
                     self.code,
-                    f"`{target.declaration.id}` would relabel a `{source.declaration.id}` value. "
-                    "Validate and translate it at the domain boundary.",
+                    message,
                     severity=Severity.WARNING,
                 )
             )
@@ -128,8 +129,9 @@ class _Brand:
 
 
 class _NominalBindings:
-    def __init__(self, context: PythonFileContext) -> None:
+    def __init__(self, context: PythonFileContext, tree: ast.Module) -> None:
         self.context = context
+        self._tree = tree
         self._modules: dict[Path, AnnotationOrigins] = {}
 
     @cached_property
@@ -137,41 +139,99 @@ class _NominalBindings:
         return AnnotationOrigins(self.context)
 
     @cached_property
-    def sources(self) -> dict[str, NominalSource]:
+    def _scope(self) -> NominalScope:
         context = self.context
         if not context.path.is_file():
-            return {}
+            return NominalScope(())
         session = context.session
-        return session.nominal_project.sources(context.path, session.first_party, project=session.project)
+        return session.nominal_project.scope(context.path, session.first_party, project=session.project)
+
+    @cached_property
+    def _local_constructors(self) -> frozenset[str]:
+        return nominal_constructor_names(self._tree)
+
+    @cached_property
+    def _absolute_path(self) -> Path:
+        return self.context.path.resolve()
+
+    @cached_property
+    def _import_bindings(self) -> dict[str, list[tuple[ast.Import | ast.ImportFrom, ast.alias]]]:
+        imports: dict[str, list[tuple[ast.Import | ast.ImportFrom, ast.alias]]] = defaultdict(list)
+        for statement in import_statements(self._tree):
+            for binding in statement.names:
+                imports[binding.asname or binding.name.partition(".")[0]].append((statement, binding))
+        return imports
+
+    def might_call_constructor(self) -> bool:
+        if self._local_constructors:
+            return True
+        source = self.context.symbol_source
+        return "import" in source and any(name in source for name in self._scope.constructor_names)
 
     def imports_nominal_source(self) -> bool:
-        for statement in self.context.nodes(ast.Import, ast.ImportFrom):
+        for statement in import_statements(self._tree):
             for binding in statement.names:
                 reference = ast.Name(id=binding.asname or binding.name, ctx=ast.Load())
-                target = binding.name if isinstance(statement, ast.Import) else self._import_name(reference, binding)
+                target = (
+                    binding.name
+                    if isinstance(statement, ast.Import)
+                    else self._import_name(reference, binding, statement)
+                )
                 if target and (self._nominal_source(target) or self._nominal_source(target.rpartition(".")[0])):
                     return True
         return False
 
+    def rebrand_message(self, constructor: ast.expr, value: ast.Name | ast.Attribute) -> str | None:
+        if not self._possible_constructor(constructor):
+            return None
+        target = self.brand(constructor, constructor, runtime=True)
+        if target is None or (source := self.annotation_brand(value)) is None:
+            return None
+        if source.declaration is target.declaration or source.carrier != target.carrier:
+            return None
+        return (
+            f"`{target.declaration.id}` would relabel a `{source.declaration.id}` value. "
+            "Validate and translate it at the domain boundary."
+        )
+
+    def _possible_constructor(self, expression: ast.expr) -> bool:
+        if isinstance(expression, ast.Name) and expression.id in self._local_constructors:
+            return True
+        root = _root_name(expression)
+        if root is None:
+            return False
+        for statement, binding in self._import_bindings.get(root, ()):
+            qualified = self._import_name(expression, binding, statement)
+            if qualified is None:
+                continue
+            module, _, name = qualified.rpartition(".")
+            source = self._nominal_source(module)
+            if source is None:
+                continue
+            names = self._local_constructors if source.path == self._absolute_path else source.constructor_names
+            if name in names:
+                return True
+        return False
+
     def annotation_brand(self, value: ast.Name | ast.Attribute) -> _Brand | None:
         annotation = self._value_annotation(value)
+        if annotation is None:
+            return None
         parsed = self.context.annotation_semantics.parse(annotation)
-        return self.brand(parsed, annotation) if parsed is not None and annotation is not None else None
+        return self.brand(parsed, annotation) if parsed is not None else None
 
     def brand(self, expression: ast.expr, at: ast.expr, *, runtime: bool = False) -> _Brand | None:
-        root = expression
-        while isinstance(root, ast.Attribute):
-            root = root.value
+        root = _root_name(expression)
         provenance = self.origins.provenance
         if (
-            not isinstance(root, ast.Name)
+            root is None
             or provenance.wildcard
             or provenance.dynamic_namespace
-            or root.id in provenance.external_bindings | provenance.mutated
-            or self.origins.shadowed(root.id, at)
+            or root in provenance.external_bindings | provenance.mutated
+            or self.origins.shadowed(root, at)
         ):
             return None
-        binding = provenance.runtime_binding(root.id, at) if runtime else self.origins.binding(root.id, at)
+        binding = provenance.runtime_binding(root, at) if runtime else self.origins.binding(root, at)
         if isinstance(expression, ast.Name) and isinstance(binding, ast.Name):
             return _declared_brand(self.origins, binding)
         if isinstance(binding, ast.alias):
@@ -179,7 +239,7 @@ class _NominalBindings:
         return None
 
     def _imported_brand(self, expression: ast.expr, binding: ast.alias) -> _Brand | None:
-        qualified = self._import_name(expression, binding)
+        qualified = self._import_name(expression, binding, self.context.parents.get(binding))
         if qualified is None:
             return None
         module, _, name = qualified.rpartition(".")
@@ -187,9 +247,11 @@ class _NominalBindings:
         source = self._nominal_source(module)
         if source is None or source.tree is None:
             return None
-        if source.path == context.path.resolve():
+        if source.path == self._absolute_path:
             origins = self.origins
         else:
+            if name not in source.constructor_names:
+                return None
             if source.path not in self._modules:
                 self._modules[source.path] = AnnotationOrigins(
                     PythonFileContext(source.path, source.text, context.session)
@@ -203,18 +265,17 @@ class _NominalBindings:
     def _nominal_source(self, module: str) -> NominalSource | None:
         if not module or module.partition(".")[0] in sys.stdlib_module_names:
             return None
-        source = self.sources.get(module)
+        source = self._scope.get(module)
         return source if source is not None and "NewType" in source.text else None
 
-    def _import_name(self, expression: ast.expr, binding: ast.alias) -> str | None:
-        parent = self.context.parents.get(binding)
+    def _import_name(self, expression: ast.expr, binding: ast.alias, parent: ast.AST | None) -> str | None:
         if isinstance(parent, ast.ImportFrom) and parent.level:
             return self._relative_name(expression, parent, binding)
         return import_name_for_binding(expression, binding, parent)
 
     def _relative_name(self, expression: ast.expr, parent: ast.ImportFrom, binding: ast.alias) -> str | None:
-        path = self.context.path.resolve()
-        module = next((module for module, source in self.sources.items() if source.path == path), None)
+        path = self._absolute_path
+        module = self._scope.module_for(path)
         if module is None:
             return None
         parts = module.split(".")
@@ -263,6 +324,12 @@ class _NominalBindings:
         return None
 
 
+def _root_name(expression: ast.expr) -> str | None:
+    while isinstance(expression, ast.Attribute):
+        expression = expression.value
+    return expression.id if isinstance(expression, ast.Name) else None
+
+
 def _declared_brand(origins: AnnotationOrigins, binding: ast.Name) -> _Brand | None:
     provenance = origins.provenance
     if provenance.wildcard or provenance.dynamic_namespace or binding.id in provenance.external_bindings:
@@ -270,14 +337,14 @@ def _declared_brand(origins: AnnotationOrigins, binding: ast.Name) -> _Brand | N
     declaration = origins.context.parents.get(binding)
     if declaration is None or origins.context.parents.get(declaration) is not origins.context.tree:
         return None
-    match declaration:
-        case ast.Assign(
-            targets=[target], value=ast.Call(func=func, args=[ast.Constant(value=name), carrier], keywords=[])
-        ) if target is binding and name == binding.id and origins.qualified(func, func) in NEW_TYPE_ORIGINS:
-            resolved = _carrier_identity(carrier, origins)
-            return _Brand(binding, resolved) if resolved is not None else None
-        case _:
-            return None
+    factory_call = nominal_factory_call(declaration)
+    if factory_call is None:
+        return None
+    target, factory, carrier = factory_call
+    if target is not binding or origins.qualified(factory, factory) not in NEW_TYPE_ORIGINS:
+        return None
+    resolved = _carrier_identity(carrier, origins)
+    return _Brand(binding, resolved) if resolved is not None else None
 
 
 def _carrier_identity(carrier: ast.expr, origins: AnnotationOrigins) -> str | ast.ClassDef | None:
