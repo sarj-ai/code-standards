@@ -20,6 +20,7 @@ const PREVIEW_LENGTH = 40;
 /** Case-sensitive on purpose: uppercase keywords mean SQL, lowercase means prose. */
 const SQL_KEYWORD_RE =
   /\b(SELECT|INSERT|UPDATE|DELETE|FROM|WHERE|JOIN|VALUES|ON CONFLICT|RETURNING|GROUP BY|ORDER BY)\b/;
+const LOWERCASE_QUERY_RE = /^\s*select\s[\s\S]*\sfrom\s/;
 const IDENTIFIER_RE = /^[a-z_][a-z0-9_.]*$/;
 const URL_PATH_RE =
   /^\/(?=[^\s]*[A-Za-z0-9])[A-Za-z0-9._~!$&'()*+,;=:@%/?#{}\u005B\u005D-]+$/;
@@ -31,6 +32,10 @@ function isStructured(value: string): boolean {
     IDENTIFIER_RE.test(value) ||
     URL_PATH_RE.test(value)
   );
+}
+
+function lowercaseQueryArgument(value: string, node: Node): boolean {
+  return LOWERCASE_QUERY_RE.test(value) && node.parent?.type === "CallExpression" && node.parent.arguments[0] === node;
 }
 
 function preview(value: string): string {
@@ -81,7 +86,7 @@ export default defineRule({
     const record = (value: string, node: Node): void => {
       if (
         value.length < MIN_LENGTH ||
-        !isStructured(value) ||
+        !(isStructured(value) || lowercaseQueryArgument(value, node)) ||
         isScaffolding(node)
       ) {
         return;

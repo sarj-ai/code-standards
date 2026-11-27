@@ -14,7 +14,7 @@ export const NO_REDUCE_ACCUMULATOR_COPY_DOCUMENTATION = {
   references: ["https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-reduce-accumulator-copy.ts"],
   autofix: "safe",
   limitations: [
-    "Requires type information proving the built-in Array or ReadonlyArray reduce/reduceRight method, an inline callback, and a fresh empty array or object-literal seed, directly or through single-use stable const aliases.",
+    "Requires type information proving the built-in Array or ReadonlyArray reduce/reduceRight method, an inline callback, and a fresh empty array or object-literal seed, directly or through single-use stable const aliases. An async callback seeded with `Promise.resolve` of such a fresh empty literal is checked through its awaited accumulator.",
     "Inspects direct accumulator spreads, Object.assign with a fresh object target, Array.from, and concat/slice/toSpliced/toSorted/toReversed/with calls. Stable callback-local const accumulator aliases are resolved. Named callbacks, mutable/escaping seeds, nested functions, and loops remain outside this rule.",
     "A copy is evidence for review, not proof of growth or measured latency. Automatic edits only remove an exact identity reducer over a fresh nonempty literal-string array in a sole exported zero-argument function with an explicit string[] return. The direct literal return remains fresh on every call. Snapshots, aliases, callbacks, nonliteral values, reverse reduction, imports, comments and other control flow remain manual.",
   ],

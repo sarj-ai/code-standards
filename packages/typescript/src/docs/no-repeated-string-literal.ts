@@ -12,7 +12,7 @@ export const NO_REPEATED_STRING_LITERAL_DOCUMENTATION = {
   category: "maintainability",
   autofix: "safe",
   limitations: [
-    "Test files, short strings, prose, substitutions, module sources, JSX attributes, and repetition within one function are excluded.",
+    "Test files, short strings, prose, substitutions, module sources, JSX attributes, and repetition within one function are excluded. Lowercase SQL is recognised only as a `select ... from` statement passed as a call's first argument.",
     "Automatic edits only reuse an already authored and already read private const primitive string declared first in an otherwise declaration-only explicit module. All ordinary zero-argument functions must directly return that constant or the identical literal. Imports, comments, annotations on the constant, other statements or uses, callbacks, shadowing, generics and initialization effects remain manual; no domain name is invented.",
   ],
   examples: [
