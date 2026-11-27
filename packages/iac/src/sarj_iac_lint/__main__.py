@@ -22,6 +22,7 @@ from sarj_iac_lint.rule_base import DefaultLevel, Diagnostic, is_suppressed
 from sarj_iac_lint.rules import REGISTRY
 from sarj_iac_lint.rules.conditional_resource_presence import ConditionalResourcePresence
 from sarj_iac_lint.rules.no_hardcoded_deployment_location import NoHardcodedDeploymentLocation
+from sarj_iac_lint.rules.no_plaintext_secret_env import NoPlaintextSecretEnv
 from sarj_iac_lint.rules.no_terraform_comments import NoTerraformComments
 from sarj_iac_lint.rules.no_terraform_guard_blocks import NoTerraformGuardBlocks, guard_blocks
 from sarj_iac_lint.terraform import TerraformSession, is_terraform, is_terraform_override, terraform_blocks
@@ -111,6 +112,8 @@ def _check(
                 rules.append(NoHardcodedDeploymentLocation(session=session))
             elif name == ConditionalResourcePresence.id:
                 rules.append(ConditionalResourcePresence(session=session))
+            elif name == NoPlaintextSecretEnv.id:
+                rules.append(NoPlaintextSecretEnv(session=session))
             else:
                 rules.append(REGISTRY[RuleId(name)]())
         diags: list[Diagnostic] = []
