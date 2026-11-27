@@ -8,7 +8,7 @@ Do not turn tutorial recipes into universal requirements. In particular:
 
 - Preserve deliberate dialog autofocus, Safari list-role workarounds, accessible custom controls, CSS and JavaScript fallbacks, and framework-managed DOM. Do not require positive or negative tabindex mechanically.
 - Check focus restoration, roving focus, announcements, validation timing, IME composition, password-manager and OTP paste, keyboard alternatives to drag/swipe, and pending/error states through real interactions. Static attribute checks cannot establish these behaviors.
-- Preserve user font preferences, text wrapping, forced colors and usable focus outlines. Plain nonzero pixel font sizes receive a CSS advisory; mixed-unit math, print typography and measured rendering require context.
+- Preserve user font preferences, text wrapping, forced colors and usable focus outlines. Plain nonzero pixel font sizes are a Stylelint error; mixed-unit math, print typography and measured rendering require context.
 - Respect reduced motion without globally setting every animation to 0.01ms. Keep content and completion logic usable when animations never start. Review repeated motion, pause controls and flash limits separately.
 - Keep data minimization, consent, retention, third-party requests and client output safety explicit. Feature detection is not consent or authorization. Verify passkey challenges, RP IDs, origins and signatures on the server if passkeys are introduced.
 - Do not require Origin, Temporal, built-in AI, native selects, new overlay APIs, install elements, HTML-in-canvas or WebMCP merely because a guide exists. Preserve the supported runtime policy and safe degradation.

@@ -20,9 +20,7 @@ For rule work, follow `plugins/sarj-skills/skills/lint-rule-generator/SKILL.md`.
 When this checkout's `verify` target calls `.github/scripts/make-local-check.sh`
 and `sarj-local-check` is installed, run `make verify` directly so its phases can
 yield shared capacity. Keep the outer supervisor for older checkouts, other
-targets, and Git hooks. Verification stops after a failed phase; `make -k` keeps
-going within that phase. Later phases reuse the TypeScript build from the
-successful first phase.
+targets, and Git hooks.
 
 When local admission is delayed, `Native make verify` can run the same target
 on the candidate branch. Reuse a running or successful exact-head workflow run,
