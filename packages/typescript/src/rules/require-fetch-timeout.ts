@@ -8,7 +8,7 @@ import { defineRule, type ESTree, type Node, type SourceCode } from "../types.js
 import { parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { nativeFetchReference } from "../utils/native-fetch-reference.js";
-import { isScriptFile, isTestFile, matchesAnyPattern } from "../utils/paths.js";
+import { hasNodeRuntimeProof, isScriptFile, isTestFile, matchesAnyPattern } from "../utils/paths.js";
 import { findVariable, getPropertyName, staticPropertyName } from "../utils/static-string.js";
 
 const NAME = "require-fetch-timeout";
@@ -226,7 +226,7 @@ export default defineRule({
         // `isTestFile` knows jscodeshift's `__testfixtures__/` spelling, so the
         // local pattern this rule used to keep for it decided nothing.
         const file = { filename: context.filename, cwd: context.cwd };
-        if (isTestFile(file) || isScriptFile(file)) return false;
+        if (isTestFile(file) || (isScriptFile(file) && !hasNodeRuntimeProof(sourceCode))) return false;
         const allowIn = (context.options[0] as Options[0])?.allowIn ?? [];
         return !(allowIn.length > 0 && matchesAnyPattern(context.filename, allowIn));
       },

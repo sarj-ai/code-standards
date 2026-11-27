@@ -1,5 +1,5 @@
 # Managed by `code-standards setup`; commit this file.
-bundle = "9.116.0"
+bundle = "9.117.0"
 rule_profile = "all"
 schema = 4
 
