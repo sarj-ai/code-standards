@@ -6,6 +6,15 @@ const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-secret-in-log", rule, {
   valid: [
+    { name: "unannotated receiver", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(upstream) { const text = await upstream.text(); logger.info(text); }" },
+    { name: "validated value", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(request: Request) { const parsed = Schema.parse(await request.json()); logger.info(parsed); }" },
+    { name: "reassigned binding", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(request: Request) { let raw = await request.text(); raw = redact(raw); logger.info(raw); }" },
+    { name: "locally declared Request type", filename: "/repo/src/app/api/hook/route.ts", code: "interface Request { text(): Promise<string> }\nexport async function handle(request: Request) { const raw = await request.text(); logger.info(raw); }" },
+    { name: "response body alias", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(res: Response) { const text = await res.text(); logger.info(text); }" },
+    { name: "unrelated NextRequest import", filename: "/repo/src/app/api/hook/route.ts", code: "import { NextRequest } from \"other\"; export async function handle(req: NextRequest) { const raw = await req.text(); logger.info(raw); }" },
+    { name: "optional request read", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(req: Request) { const raw = await req.text?.(); logger.info(raw); }" },
+    { name: "computed request read", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(req: Request) { const raw = await req[\"text\"](); logger.info(raw); }" },
+    { name: "request body alias in test file", filename: "/repo/src/hook.test.ts", code: "async function handle(req: Request) { const raw = await req.text(); logger.info(raw); }" },
     { name: "an array replacer may allowlist safe fields", code: "logger.info(JSON.stringify(body, ['id']));" },
     { name: "a function replacer may redact sensitive fields", code: "logger.info(JSON.stringify({token}, redact));" },
     { name: "an unknown replacer stays opaque through truncation", code: "logger.info(JSON.stringify(body, replacer).slice(0, 100));" },
@@ -194,6 +203,10 @@ RULE_TESTER.run("no-secret-in-log", rule, {
     },
   ],
   invalid: [
+    { name: "NextRequest body alias", filename: "/repo/src/app/api/hook/route.ts", code: "import { NextRequest } from \"next/server\";\nexport async function POST(req: NextRequest) { const raw = await req.text(); console.log(\"hook raw:\", raw); }", errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "serialized request body alias", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(request: Request) { const received = await request.json(); logger.info(JSON.stringify(received).slice(0, 200)); }", errors: [{ messageId: "noRawBodyInLog" }] },
+    { name: "request formData alias", filename: "/repo/src/app/api/hook/route.ts", code: "export async function handle(request: Request) { const received = await request.formData(); logger.info(received); }", errors: [{ messageId: "noRawBodyInLog" }] },
+
     { name: "a token prefix still exposes secret material", code: 'logger.info("auth", { token: token.slice(0, 6) });', errors: [{ messageId: "noSecretInLog" }] },
     { name: "a rendered token prefix still exposes secret material", code: 'logger.info("auth", { token: `${token.slice(0, 4)}...` });', errors: [{ messageId: "noSecretInLog" }] },
     { name: "serialization and truncation do not redact a body", code: 'logger.info("resp", { body: JSON.stringify(body).slice(0, 200) });', errors: [{ messageId: "noRawBodyInLog" }] },

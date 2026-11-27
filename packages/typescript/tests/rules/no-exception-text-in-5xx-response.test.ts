@@ -13,6 +13,20 @@ const MESSAGE_HELPER = 'const errorMessage = (error: unknown) => error instanceo
 
 RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
   valid: [
+    { name: "escaping alias", code: handler("const e = error as { message?: string }; console.error('failed', e); " + reply("{error:e.message}")) },
+    { name: "mutated alias", code: handler("const e = error; e.message = 'safe'; " + reply("{error:error.message}")) },
+    { name: "mutable alias", code: handler("let e = error; " + reply("{error:e.message}")) },
+    { name: "var alias", code: handler("var e = error; " + reply("{error:e.message}")) },
+    { name: "alias of an alias", code: handler("const a = error; const b = a; " + reply("{error:b.message}")) },
+    { name: "stored alias", code: handler("const e = error; const state = {e}; " + reply("{error:e.message}")) },
+    { name: "spread alias", code: handler("const e = error; const state = {...e}; " + reply("{error:e.message}")) },
+    { name: "destructured alias", code: handler("const {message} = error; " + reply("{error:message}")) },
+    { name: "separate payload binding", code: handler("const e = error; const result = {error:e.message}; return Response.json(result,{status:500});") },
+    { name: "alias with spread payload", code: handler("const e = error; " + reply("{...NO_MATCH,error:e.message}")) },
+    { name: "alias with client status", code: handler("const e = error; " + reply("{error:e.message}", "400")) },
+    { name: "alias with dynamic status", code: handler("const e = error; " + reply("{error:e.message}", "status")) },
+    { name: "alias method may sanitize original", code: handler("const e = error; e.sanitize(); " + reply("{error:error.message}")) },
+    { name: "mutated original invalidates alias", code: handler("const e = error; error.message = 'safe'; " + reply("{error:e.message}")) },
     { name: "generic server failure", code: handler(reply("{error:'Internal server error'}")) },
     { name: "public domain error", code: handler(reply("{error:error.message}", "409")) },
     { name: "successful response", code: handler(reply("{error:error.message}", "200")) },
@@ -69,6 +83,8 @@ RULE_TESTER.run("no-exception-text-in-5xx-response", rule, {
     { name: "generated sources are excluded", filename: "/repo/src/generated/route.ts", code: handler(reply("{error:error.message}")) },
   ].map((entry) => ({ filename: PRODUCTION, ...entry })),
   invalid: [
+    { name: "one const catch alias", code: handler("const e = error as { message?: string }; console.error('failed', e.message); " + reply("{error:e.message ?? 'internal_error'}")) },
+    { name: "inert alias preserves original diagnostic", code: handler("const e = error; " + reply("{error:error.message}")) },
     { name: "caught message", code: handler(reply("{error:error.message}")) },
     { name: "caught stack", code: handler(reply("{error:error.stack}")) },
     { name: "guarded caught message remains raw", code: handler(reply("{error:error instanceof Error ? error.message : 'Failed'}")) },

@@ -21,6 +21,23 @@ const REQUIRE_JWT_LIFETIME_DOCUMENTATION = {
 const TESTER = ruleTester();
 TESTER.run("require-jwt-lifetime", rule, {
   valid: [
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys, { audience: 'a' }); return payload; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); return authorized(payload); }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); if (payload.exp === undefined) throw new Error('no exp'); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys, { requiredClaims: ['exp'] }); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const result = await jwtVerify(token, keys); return result.payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); return payload[field]; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); return payload.iat; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); return payload.nbf; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys, options); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys, {...options}); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys, {maxTokenAge: '1h'}); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); payload.sub = 'safe'; return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); delete payload.sub; return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); payload.count++; return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); ({sub:payload.sub} = publicClaims); return payload.sub; }",
+    "import { jwtVerify } from 'jose'; async function claims(token, keys) { const { payload } = await jwtVerify(token, keys); }",
+
     REQUIRE_JWT_LIFETIME_DOCUMENTATION.examples[1].files[0].source,
     "import { jwtVerify } from 'jose'; const verify = (token, key) => jwtVerify(token, key, { maxTokenAge: 0 });",
     "import { jwtVerify } from 'jose'; const verify = (token, key) => jwtVerify(token, key, { maxTokenAge: -1 });",
@@ -32,6 +49,7 @@ TESTER.run("require-jwt-lifetime", rule, {
     "import { jwtVerify } from 'jose'; async function check(token, key) { const result = await jwtVerify(token, key); assertExpiration(result); return result; }",
   ],
   invalid: [
+    "import { jwtVerify } from 'jose'; async function user(token, keys) { const { payload } = await jwtVerify(token, keys, { audience: 'a', issuer: 'i' }); return { email: String(payload['email']) }; }",
     REQUIRE_JWT_LIFETIME_DOCUMENTATION.examples[0].files[0].source,
     "import { jwtVerify } from 'jose'; const verify = (token, key) => jwtVerify(token, key, { requiredClaims: ['iss'] });",
     "import { jwtVerify as verify } from 'jose'; const load = async (token, key) => await verify(token, key, { issuer: 'app' });",
