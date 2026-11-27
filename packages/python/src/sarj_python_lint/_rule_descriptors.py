@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("prefer-decimal-money"),
+        module="sarj_python_lint.rules.prefer_decimal_money",
+        class_name="PreferDecimalMoney",
+        code="SARJ611",
+        description="Carry monetary amounts as Decimal or a money type, not float.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("no-http-exception-in-services"),
         module="sarj_python_lint.rules.no_http_exception_in_services",
         class_name="NoHttpExceptionInServices",

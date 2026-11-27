@@ -170,6 +170,7 @@
       "prefer-configured-cloud-scope",
       "prefer-constant-time-secret-compare",
       "prefer-coordinated-state-owner",
+      "prefer-decimal-money",
       "prefer-declarative-batch-validation",
       "prefer-defaultdict",
       "prefer-direct-import-module",
@@ -784,7 +785,8 @@
       "SARJ607",
       "SARJ608",
       "SARJ609",
-      "SARJ610"
+      "SARJ610",
+      "SARJ611"
     ],
     "sql": [
       "SARJ101",

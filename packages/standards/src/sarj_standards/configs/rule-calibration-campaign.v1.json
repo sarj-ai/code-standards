@@ -3935,6 +3935,14 @@
       "state": "pending",
       "evidence": "A private consumer snapshot of 3,147 Python files, 218 of them service modules, produced 0 findings. Replaying every historical version of a service module that mentions HTTPException (7 versions) yielded findings in 2 modules, both inspected as true positives later moved behind router mapping, with zero inspected false positives; a third instance was caught in review before merge. This repository's 1,364-file corpus and two other repositories contain no service modules and produced 0 findings. None of 258 open consumer pull requests adds a match. Modules outside a `services` directory return before the syntax tree is read.",
       "outcome": "Ship at WARNING without autofix. Report a raise of FastAPI or Starlette HTTPException in non-test modules below a `services` directory. Subclasses, re-raised variables and handlers stay outside the detector. Field calibration beyond one consumer remains pending."
+    },
+    {
+      "task": "rule-audit/python/prefer-decimal-money",
+      "family": "python",
+      "ruleId": "prefer-decimal-money",
+      "state": "pending",
+      "evidence": "Isolated replay over 115 immutable Python files found 202 warnings, including two generic measurement parameters named amount. The replay covered every labeled monetary location and left 115 sampled near-miss locations quiet. Money advice superseded 58 generic warnings at the same field and preserved the other 271 existing findings. Three alternating baseline/candidate pairs measured cold/warm analysis medians of 10.155/11.170 seconds and 9.738/10.430 seconds, with median peak child RSS of 109,196/109,744 KiB. Wall times varied with shared VM contention. Private source and identifying provenance remain outside the published artifact.",
+      "outcome": "Ship SARJ611 at WARNING with no autofix. Confirm monetary intent before migrating and preserve the agreed serialization format. Integer minor units and domain types remain valid. Broader calibration remains pending."
     }
   ]
 }

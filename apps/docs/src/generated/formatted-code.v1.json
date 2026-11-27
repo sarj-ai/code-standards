@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "9e6b91d6b98768268128fce75d93a8c147719a0b16c27837ad6fe477a17e6d62",
-  "cliSha256": "e1c6a5ea0ea6bcd5935edc9f9bbdc0368c82d9a938aad718894973f24c1447dc",
+  "catalogSha256": "36ad1307a13ed3e873a67976b315c2a6c163ca3975a3217fb7c2827cedac86c7",
+  "cliSha256": "ebf4841065b314d5e8b4f7f5bbd78bb2907812996cb6d60ea4450776e6f7fd97",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19259,6 +19259,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "One typed entry retains both task identities"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-decimal-money": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/deals.py",
+              "source": "from decimal import Decimal\nfrom pydantic import BaseModel\n\n\nclass Deal(BaseModel):\n    purchase_price: Decimal\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/deals.py",
+          "id": "decimal-purchase-price",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A purchase price uses decimal arithmetic"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/deals.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Deal(BaseModel):\n    purchase_price: float\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/deals.py",
+          "id": "float-purchase-price",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A purchase price uses binary floating point"
         }
       ],
       "optionsSchemaSource": null
