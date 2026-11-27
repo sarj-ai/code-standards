@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "eefd25cb0d657533e551e9177c7291551f61a5f56d5ce47b6bd8c9ae902b22f2",
-  "cliSha256": "6fc6b92cc7719ecc4a6e6792082f024d6b8cc297d328cab5cbe06d718bffcc31",
+  "catalogSha256": "6bf44022696cf00b0c96ac743df7cf53188a6108b72980802e2361e1dc55a8b6",
+  "cliSha256": "07b632a5bc6b3e72e2e6bc2bda7177011f7f6d7eba1590fba8a20ae9d51bd9f9",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -24821,6 +24821,36 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/item_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE item SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/item_store.py",
+          "id": "conditional-setter",
+          "outcome": "reject",
+          "scenarioId": "setter-review",
+          "title": "Review a separate guarded setter"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/item_store.py",
+              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE other SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/item_store.py",
+          "id": "different-relation",
+          "outcome": "accept",
+          "scenarioId": "setter-review",
+          "title": "Different relation ownership is preserved"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/user_store.py",
               "source": "from pydantic import BaseModel\n\n\nclass UserInput(BaseModel):\n    id: str\n    name: str\n\n\nclass UserStore:\n    async def upsert(self, data: UserInput) -> User:\n        await self.cursor.execute(\n            \"INSERT INTO users (id, name) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name\",\n            (data.id, data.name),\n        )\n\n    async def set_name(self, id_: str, name: str) -> User:\n        await self.cursor.execute(\n            \"UPDATE users SET name = %s WHERE id = %s\", (name, id_)\n        )\n"
             }
@@ -24946,41 +24976,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Fixture inserts need an explicit duplicate decision"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:store-mutation-command-fanout": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/item_store.py",
-              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE item SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/item_store.py",
-          "id": "conditional-setter",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Review a separate guarded setter"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/item_store.py",
-              "source": "from psycopg import AsyncCursor\n\n\nclass ItemStore:\n    def __init__(self, cursor: AsyncCursor):\n        self.cursor = cursor\n\n    async def upsert(self, item):\n        await self.cursor.execute(\n            \"INSERT INTO item(id, name) VALUES(%s, %s) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name\",\n            (item.id, item.name),\n        )\n\n    async def set_name_before_start(self, key, name):\n        await self.cursor.execute(\n            \"UPDATE other SET name=%s WHERE id=%s AND started_at IS NULL\", (name, key)\n        )\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/item_store.py",
-          "id": "different-relation",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Different relation ownership is preserved"
         }
       ],
       "optionsSchemaSource": null

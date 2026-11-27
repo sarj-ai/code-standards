@@ -413,15 +413,6 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         enabled_by_default=True,
     ),
     RuleDescriptor(
-        rule_id=RuleId("store-mutation-command-fanout"),
-        module="sarj_python_lint.rules.store_mutation_command_fanout",
-        class_name="StoreMutationCommandFanout",
-        code="SARJ546",
-        description="Review per-field store mutations beside an existing model write command.",
-        aliases=(),
-        enabled_by_default=True,
-    ),
-    RuleDescriptor(
         rule_id=RuleId("prefer-application-model-joins"),
         module="sarj_python_lint.rules.prefer_application_model_joins",
         class_name="PreferApplicationModelJoins",
@@ -633,8 +624,8 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.store_field_update_reuses_upsert",
         class_name="StoreFieldUpdateReusesUpsert",
         code="SARJ517",
-        description="A plain field UPDATE duplicates fields already writable through the store's upsert command.",
-        aliases=(),
+        description="Review per-field store setters beside the store's upsert command; a plain field UPDATE duplicates fields it already writes.",
+        aliases=("store-mutation-command-fanout",),
         enabled_by_default=True,
     ),
     RuleDescriptor(
