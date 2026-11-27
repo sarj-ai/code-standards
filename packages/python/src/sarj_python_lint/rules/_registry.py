@@ -280,12 +280,14 @@ from sarj_python_lint.rules.prefer_bulk_upsert import PreferBulkUpsert
 from sarj_python_lint.rules.prefer_coordinated_state_owner import PreferCoordinatedStateOwner
 from sarj_python_lint.rules.prefer_defaultdict import PreferDefaultdict
 from sarj_python_lint.rules.prefer_direct_import_module import PreferDirectImportModule
+from sarj_python_lint.rules.prefer_direct_iteration import PreferDirectIteration
 from sarj_python_lint.rules.prefer_discriminated_model_union import PreferDiscriminatedModelUnion
 from sarj_python_lint.rules.prefer_exception_propagation import PreferExceptionPropagation
 from sarj_python_lint.rules.prefer_explicit_class_contract import PreferExplicitClassContract
 from sarj_python_lint.rules.prefer_explicit_value_model_construction import PreferExplicitValueModelConstruction
 from sarj_python_lint.rules.prefer_frozen_dataclass import PreferFrozenDataclass
 from sarj_python_lint.rules.prefer_grouped_settings import PreferGroupedSettings
+from sarj_python_lint.rules.prefer_itertools_batched import PreferItertoolsBatched
 from sarj_python_lint.rules.prefer_match_none_check import PreferMatchNoneCheck
 from sarj_python_lint.rules.prefer_named_literal_alias import PreferNamedLiteralAlias
 from sarj_python_lint.rules.prefer_next_over_search_loop import PreferNextOverSearchLoop
@@ -327,6 +329,8 @@ _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
         NoNominalRebrand.id: NoNominalRebrand,
         NoFailureConflatedWithAbsence.id: NoFailureConflatedWithAbsence,
         PreferFrozenDataclass.id: PreferFrozenDataclass,
+        PreferDirectIteration.id: PreferDirectIteration,
+        PreferItertoolsBatched.id: PreferItertoolsBatched,
         RequireTotalEnumMapping.id: RequireTotalEnumMapping,
         NoInjectedDependencyClose.id: NoInjectedDependencyClose,
         NoGatherFirstExceptionReraise.id: NoGatherFirstExceptionReraise,

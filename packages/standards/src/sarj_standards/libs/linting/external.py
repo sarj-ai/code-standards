@@ -7,6 +7,7 @@ from datetime import timedelta
 from enum import StrEnum
 from functools import cache, partial
 import io
+from itertools import batched
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -555,8 +556,7 @@ def _stylesheet_reports(
         return (ToolReport("stylelint", Completion.FAILED, issues=(issue,)),)
     config = Path(__file__).resolve().parents[2] / "configs"
     reports: list[ToolReport] = []
-    for offset in range(0, len(files), _SECURITY_BATCH_SIZE):
-        batch = tuple(files[offset : offset + _SECURITY_BATCH_SIZE])
+    for batch in batched(files, _SECURITY_BATCH_SIZE, strict=False):
         argv = (
             "stylelint",
             "--config",
@@ -759,8 +759,7 @@ def _security_reports(
         return (ToolReport("security-tools", Completion.FAILED, issues=(issue,)),)
     reports: list[ToolReport] = []
     if selected.workflows and (capabilities is None or "zizmor" in capabilities):
-        for start in range(0, len(selected.workflows), _SECURITY_BATCH_SIZE):
-            batch = selected.workflows[start : start + _SECURITY_BATCH_SIZE]
+        for batch_number, batch in enumerate(batched(selected.workflows, _SECURITY_BATCH_SIZE, strict=False), start=1):
             reports.append(
                 _invoke(
                     "zizmor",
@@ -785,7 +784,7 @@ def _security_reports(
                     ),
                     parser=security_tools.parse_zizmor,
                     version=security_tools.VERSIONS["zizmor"],
-                    invocation_id=InvocationId(f"batch-{start // _SECURITY_BATCH_SIZE + 1}"),
+                    invocation_id=InvocationId(f"batch-{batch_number}"),
                     file_count=len(batch),
                 )
             )
@@ -808,8 +807,7 @@ def _checkov_reports(
             checks = checks.intersection(security_tools.KUBERNETES_CHECKS)
         if not checks:
             continue
-        for start in range(0, len(paths), _SECURITY_BATCH_SIZE):
-            batch = paths[start : start + _SECURITY_BATCH_SIZE]
+        for batch_number, batch in enumerate(batched(paths, _SECURITY_BATCH_SIZE, strict=False), start=1):
             reports.append(
                 _invoke(
                     "checkov",
@@ -834,7 +832,7 @@ def _checkov_reports(
                     ),
                     parser=security_tools.parse_checkov,
                     version=security_tools.VERSIONS["checkov"],
-                    invocation_id=InvocationId(f"{framework}:batch-{start // _SECURITY_BATCH_SIZE + 1}"),
+                    invocation_id=InvocationId(f"{framework}:batch-{batch_number}"),
                     file_count=len(batch),
                 )
             )
@@ -1933,11 +1931,10 @@ def _execute_shellcheck_family(plan: ShellCheckFamilyPlan) -> tuple[ToolReport, 
             )
         )
         return tuple(reports)
-    for batch_number, start in enumerate(range(0, len(plan.files), _SHELLCHECK_BATCH_SIZE), start=1):
-        batch = tuple(sorted(plan.files[start : start + _SHELLCHECK_BATCH_SIZE]))
+    for batch_number, batch in enumerate(batched(plan.files, _SHELLCHECK_BATCH_SIZE, strict=False), start=1):
         reports.append(
             _invoke_shellcheck(
-                batch, root=plan.root, runner=plan.executor, invocation_id=InvocationId(str(batch_number))
+                sorted(batch), root=plan.root, runner=plan.executor, invocation_id=InvocationId(str(batch_number))
             )
         )
     return tuple(reports)

@@ -175,7 +175,7 @@ def test_verified_banned_api_paths(
         "import yaml\nvalue = yaml.safe_load(raw)\nvalues = yaml.safe_load_all(raw)\n",
         "import asyncio\nvalue = asyncio.create_subprocess_exec(program, argument)\n",
         "from pydantic import BaseModel\nclass Input(BaseModel):\n    value: str\nresult = Input.model_validate(raw)\n",
-        "import asyncio\nvalue = asyncio.ensure_future(awaitable)\nloop = asyncio.get_event_loop()\n",
+        "import asyncio\nvalue = asyncio.ensure_future(awaitable)\nloop = asyncio.get_running_loop()\n",
         (
             "import asyncio.tasks\nimport asyncio.events\n"
             "value = asyncio.tasks.ensure_future(awaitable)\nloop = asyncio.events.get_event_loop()\n"

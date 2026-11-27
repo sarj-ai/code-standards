@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from functools import lru_cache
 import hashlib
+from itertools import batched
 import json
 import os
 from pathlib import Path
@@ -253,8 +254,7 @@ def _commit_findings(
 
 
 def _commit_messages(root: Path, revisions: Sequence[str]) -> Iterable[tuple[str, list[str], str]]:
-    for offset in range(0, len(revisions), _COMMIT_MESSAGE_BATCH_SIZE):
-        batch = revisions[offset : offset + 128]
+    for batch in batched(revisions, _COMMIT_MESSAGE_BATCH_SIZE, strict=False):
         fields = _git(root, "show", "--no-patch", "--format=%P%x00%H%n%s%n%b%n%x00", *batch, "--").stdout.split("\0")
         if len(fields) != len(batch) * 2 + 1 or fields[-1].strip():
             msg = "cannot parse commit message batch"

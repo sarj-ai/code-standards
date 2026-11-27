@@ -295,12 +295,7 @@ def _optional_nested_int_map(value: object) -> dict[str, dict[str, int]] | None:
 def _string_tuple(value: object) -> tuple[str, ...]:
     if not _is_object_list(value):
         return ()
-    items: list[str] = []
-    for index in range(len(value)):
-        item: object = value[index]
-        if isinstance(item, str) and item:
-            items.append(item)
-    return tuple(sorted(items))
+    return tuple(sorted(item for item in value if isinstance(item, str) and item))
 
 
 def _is_object_list(value: object) -> TypeGuard[list[object]]:

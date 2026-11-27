@@ -392,5 +392,7 @@
   "SARJ600": "require-total-enum-mapping",
   "SARJ601": "no-failure-conflated-with-absence",
   "SARJ607": "prefer-frozen-dataclass",
-  "SARJ608": "no-nominal-rebrand"
+  "SARJ608": "no-nominal-rebrand",
+  "SARJ605": "prefer-itertools-batched",
+  "SARJ606": "prefer-direct-iteration"
 }

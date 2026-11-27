@@ -297,6 +297,19 @@ warns-extend-require-match-for = [
 "pydantic.deprecated.tools.parse_obj_as".msg = "Define a named Pydantic BaseModel or RootModel and use model_validate/model_validate_json. Generic schema infrastructure or a required compatibility boundary needs a local, reasoned TID251 suppression."
 "psycopg.sql.Literal".msg             = "Use parameterized queries (psycopg's `%s` placeholders) instead of sql.Literal."
 "uuid.uuid4".msg                      = "Use uuid.uuid7() — time-ordered, aligns with the DB uuidv7() default. For unguessable secrets use secrets.token_urlsafe(), not a UUID."
+# PEP 695 owns type parameters on the py314 floor. UP046/UP047 rewrite only the
+# forms they can fix; these bans close the remainder (shared, imported or public TypeVars).
+"typing.TypeVar".msg                 = "Declare type parameters inline (PEP 695): `def first[T](xs: list[T]) -> T`, `class Box[T]:`, `type Pair[T] = tuple[T, T]`."
+"typing_extensions.TypeVar".msg      = "Declare type parameters inline (PEP 695), including defaults: `class Box[T = int]:`."
+"typing.ParamSpec".msg               = "Declare the parameter specification inline (PEP 695): `def wrap[**P, R](fn: Callable[P, R]) -> Callable[P, R]`."
+"typing_extensions.ParamSpec".msg    = "Declare the parameter specification inline (PEP 695): `def wrap[**P, R](fn: Callable[P, R]) -> Callable[P, R]`."
+"typing.TypeVarTuple".msg            = "Declare the variadic parameter inline (PEP 695): `def pack[*Ts](*args: *Ts) -> tuple[*Ts]`."
+"typing_extensions.TypeVarTuple".msg = "Declare the variadic parameter inline (PEP 695): `def pack[*Ts](*args: *Ts) -> tuple[*Ts]`."
+"typing.Generic".msg                 = "Use a PEP 695 class header: `class Box[T]:` or `class Reader[T](Protocol):`."
+"typing_extensions.Generic".msg      = "Use a PEP 695 class header: `class Box[T]:` or `class Reader[T](Protocol):`."
+"typing.AnyStr".msg                  = "Deprecated since Python 3.13. Use a constrained parameter: `def join[S: (str, bytes)](parts: list[S]) -> S`."
+"typing_extensions.AnyStr".msg       = "Deprecated since Python 3.13. Use a constrained parameter: `def join[S: (str, bytes)](parts: list[S]) -> S`."
+"asyncio.get_event_loop".msg         = "Use `asyncio.get_running_loop()` inside a coroutine and `asyncio.run()`/`asyncio.Runner` at the entry point."
 
 # BEGIN GENERATED LIBRARY POLICY
 "aioredis".msg = "LIB020: aioredis was merged into redis-py; use redis.asyncio. Replace with redis.asyncio."
