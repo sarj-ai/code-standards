@@ -28,6 +28,84 @@ import {
 } from "./_service-class.js";
 
 const NAME = "require-port-for-service";
+const JAVASCRIPT_FILE_RE = /\.(?:js|jsx|mjs|cjs)$/iu;
+
+type ClassLike = ESTree.Class;
+type ProgramStatement = ESTree.Program["body"][number];
+
+interface ClassBinding {
+  readonly declaration: ClassLike;
+  readonly name: string;
+}
+
+function isPublicInstanceMember(member: ESTree.MethodDefinition | ESTree.PropertyDefinition): boolean {
+  return !member.static && member.accessibility !== "private" && member.accessibility !== "protected" &&
+    member.key.type !== "PrivateIdentifier";
+}
+
+function hasPublicInstanceBehavior(node: ClassLike): boolean {
+  return node.body.body.some((member) => {
+    if (member.type === "MethodDefinition") return member.kind !== "constructor" && isPublicInstanceMember(member);
+    return member.type === "PropertyDefinition" && isPublicInstanceMember(member) && (
+      member.value?.type === "ArrowFunctionExpression" ||
+      member.value?.type === "FunctionExpression" ||
+      member.typeAnnotation?.typeAnnotation.type === "TSFunctionType"
+    );
+  });
+}
+
+function classBindings(statement: ProgramStatement): readonly ClassBinding[] {
+  const declaration = statement.type === "ExportNamedDeclaration" ? statement.declaration : statement;
+  if (declaration?.type === "ClassDeclaration") {
+    return declaration.id === null ? [] : [{ declaration, name: declaration.id.name }];
+  }
+  if (declaration?.type !== "VariableDeclaration") return [];
+  return declaration.declarations.flatMap((item) =>
+    item.id.type === "Identifier" && item.init?.type === "ClassExpression"
+      ? [{ declaration: item.init, name: item.id.name }]
+      : [],
+  );
+}
+
+function exportedClasses(program: ESTree.Program, classes: ReadonlyMap<string, ClassLike>): Map<ClassLike, string> {
+  const exported = new Map<ClassLike, string>();
+  function collectExportedClass(statement: ProgramStatement): void {
+    if (statement.type === "ExportNamedDeclaration") {
+      for (const binding of classBindings(statement)) {
+        exported.set(binding.declaration, binding.name);
+      }
+      if (statement.source !== null || statement.exportKind === "type") return;
+      collectClassSpecifiers(statement);
+      return;
+    }
+    if (statement.type !== "ExportDefaultDeclaration") return;
+    if (statement.declaration.type === "ClassDeclaration" || statement.declaration.type === "ClassExpression") {
+      exported.set(statement.declaration, statement.declaration.id?.name ?? "default");
+    } else if (statement.declaration.type === "Identifier") {
+      const candidate = classes.get(statement.declaration.name);
+      if (candidate !== undefined) {
+        exported.set(candidate, statement.declaration.name);
+      }
+    }
+  }
+
+  function collectClassSpecifiers(statement: ESTree.ExportNamedDeclaration): void {
+    for (const specifier of statement.specifiers) {
+      if (specifier.exportKind === "type") continue;
+      // TS-ESTree reads `local.name`; a string-literal local only occurs with a `source`.
+      const candidate = classes.get((specifier.local as { name: string }).name);
+      if (candidate === undefined) continue;
+      const exportedName = specifier.exported.type === "Identifier" ? specifier.exported.name : specifier.exported.value;
+      exported.set(candidate, exportedName);
+    }
+  }
+
+  for (const statement of program.body) {
+    collectExportedClass(statement);
+  }
+
+  return exported;
+}
 
 /** Third-party transports commonly replaced below a thin client wrapper. */
 const HTTP_TRANSPORT_TYPE_RE = /^(?:KyInstance|AxiosInstance|Session)$/;
@@ -219,24 +297,32 @@ export default defineRule({
     type: "suggestion",
     docs: {
       description:
-        "Advise when an exported service with injected collaborators has public methods not covered by its declared ports.",
+        "Require exported-class contracts and advise when an exported injected service's public methods are not covered by its declared ports.",
       url: docsUrl(NAME),
     },
     schema: [],
     fixable: "code",
     messages: {
+      requireContract:
+        "Exported class `{{name}}` has public behavior but no declared interface or base contract; add a focused contract and implement it.",
       requireInterface:
         "`{{name}}` stores injected collaborator(s) ({{deps}}), and its declared ports do not cover its public callable surface ({{methods}}). Where consumers need substitution, type them against one or more focused interfaces; do not create one broad interface solely to satisfy this advisory.",
     },
   },
   createOnce(context) {
+    let portApplies = false;
+    let contractApplies = false;
     return {
       before(): boolean | void {
         const file = { filename: context.filename, cwd: context.cwd };
-        if (isTestFile(file) || isStoryFile(file) || isScriptFile(file)) return false;
-        if (isGeneratedFile(file, context.sourceCode.getText())) return false;
+        portApplies = !(isTestFile(file) || isStoryFile(file) || isScriptFile(file) ||
+          isGeneratedFile(file, context.sourceCode.getText()));
+        contractApplies = !(JAVASCRIPT_FILE_RE.test(file.filename) || isTestFile(file) || isStoryFile(file) ||
+          isGeneratedFile(file, context.sourceCode.text));
+        if (!portApplies && !contractApplies) return false;
       },
       ClassDeclaration(node): void {
+        if (!portApplies) return;
         // The port itself must never fire.
         if (node.id === null || node.abstract === true || node.decorators.length > 0) return;
         if (ERROR_VALUE_NAME_RE.test(node.id.name)) return;
@@ -256,6 +342,36 @@ export default defineRule({
           },
           ...(fix !== null && { fix }),
         });
+      },
+      "Program:exit"(program): void {
+        if (!contractApplies) return;
+        const classes = new Map<string, ClassLike>();
+        const abstractBases = new Set<string>();
+        for (const statement of program.body) {
+          for (const binding of classBindings(statement)) {
+            classes.set(binding.name, binding.declaration);
+            if (binding.declaration.abstract) abstractBases.add(binding.name);
+          }
+        }
+
+        for (const [declaration, exportedName] of exportedClasses(program, classes)) {
+          const extendsLocalAbstractBase =
+            declaration.superClass?.type === "Identifier" && abstractBases.has(declaration.superClass.name);
+          if (
+            declaration.abstract ||
+            (declaration.implements?.length ?? 0) > 0 ||
+            extendsLocalAbstractBase ||
+            !hasPublicInstanceBehavior(declaration)
+          )
+            continue;
+          const fix = existingFactoryContractFix(context.sourceCode, declaration);
+          context.report({
+            node: declaration.id ?? declaration,
+            messageId: "requireContract",
+            data: { name: exportedName },
+            ...(fix !== null && { fix }),
+          });
+        }
       },
     };
   },

@@ -168,7 +168,6 @@ import { REQUIRE_EXPLICIT_CONTRACT_IMPLEMENTATION_DOCUMENTATION } from "./requir
 import { REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION } from "./require-explicit-service-contract.js";
 import { REQUIRE_FETCH_TIMEOUT_DOCUMENTATION } from "./require-fetch-timeout.js";
 import { REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION } from "./require-ime-safe-enter-handler.js";
-import { REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION } from "./require-interface-for-exported-class.js";
 import { REQUIRE_JWT_LIFETIME_DOCUMENTATION } from "./require-jwt-lifetime.js";
 import { REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION } from "./require-pascal-case-zod-schema-name.js";
 import { REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION } from "./require-port-for-service.js";
@@ -350,7 +349,6 @@ export const RULE_DOCUMENTATION = {
   "require-explicit-service-contract": REQUIRE_EXPLICIT_SERVICE_CONTRACT_DOCUMENTATION,
   "require-fetch-timeout": REQUIRE_FETCH_TIMEOUT_DOCUMENTATION,
   "require-ime-safe-enter-handler": REQUIRE_IME_SAFE_ENTER_HANDLER_DOCUMENTATION,
-  "require-interface-for-exported-class": REQUIRE_INTERFACE_FOR_EXPORTED_CLASS_DOCUMENTATION,
   "require-jwt-lifetime": REQUIRE_JWT_LIFETIME_DOCUMENTATION,
   "require-pascal-case-zod-schema-name": REQUIRE_PASCAL_CASE_ZOD_SCHEMA_NAME_DOCUMENTATION,
   "require-port-for-service": REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION,

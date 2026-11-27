@@ -2588,21 +2588,6 @@
       {}
     ]
   },
-  "@sarj/require-interface-for-exported-class": {
-    "kind": "js-alias",
-    "oxlintId": "@sarj/require-interface-for-exported-class",
-    "contexts": {
-      "source-ts": "error",
-      "source-tsx": "error",
-      "source-js": "error",
-      "source-jsx": "error",
-      "test-ts": "error",
-      "test-bun-ts": "error",
-      "test-playwright-ts": "error",
-      "config-ts": "error",
-      "design-system-tsx": "error"
-    }
-  },
   "@sarj/require-jwt-lifetime": {
     "kind": "js-alias",
     "oxlintId": "@sarj/require-jwt-lifetime",

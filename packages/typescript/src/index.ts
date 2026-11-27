@@ -172,7 +172,6 @@ import requireExplicitContractImplementation from "./rules/require-explicit-cont
 import requireExplicitServiceContract from "./rules/require-explicit-service-contract.js";
 import requireFetchTimeout from "./rules/require-fetch-timeout.js";
 import requireImeSafeEnterHandler from "./rules/require-ime-safe-enter-handler.js";
-import requireInterfaceForExportedClass from "./rules/require-interface-for-exported-class.js";
 import requireJwtLifetime from "./rules/require-jwt-lifetime.js";
 import requirePascalCaseZodSchemaName from "./rules/require-pascal-case-zod-schema-name.js";
 import requirePortForService from "./rules/require-port-for-service.js";
@@ -354,7 +353,6 @@ const RULES = {
   "require-explicit-service-contract": requireExplicitServiceContract,
   "require-fetch-timeout": requireFetchTimeout,
   "require-ime-safe-enter-handler": requireImeSafeEnterHandler,
-  "require-interface-for-exported-class": requireInterfaceForExportedClass,
   "require-jwt-lifetime": requireJwtLifetime,
   "require-pascal-case-zod-schema-name": requirePascalCaseZodSchemaName,
   "require-port-for-service": requirePortForService,

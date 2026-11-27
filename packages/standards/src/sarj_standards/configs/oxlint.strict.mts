@@ -1019,7 +1019,6 @@ const RULES = {
   "@sarj/require-explicit-contract-implementation": "error",
   "@sarj/require-explicit-service-contract": "error",
   "@sarj/require-fetch-timeout": ["error", {}],
-  "@sarj/require-interface-for-exported-class": "error",
   "@sarj/require-jwt-lifetime": "error",
   "@sarj/require-pascal-case-zod-schema-name": "error",
   "@sarj/require-port-for-service": "error",
