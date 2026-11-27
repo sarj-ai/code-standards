@@ -68,18 +68,20 @@ function isTestCaller(callee: Node, isFrameworkTest: (identifier: Identifier) =>
   return member !== null && TEST_MODIFIERS.has(member) && isTestCaller(callee.object, isFrameworkTest);
 }
 
-function isStaticCase(node: Node): boolean {
-  if (isErasedExpression(node)) return isStaticCase(node.expression);
+function isStaticCase(node: Node, isLiteralIdentifier: (identifier: Identifier) => boolean): boolean {
+  if (isErasedExpression(node)) return isStaticCase(node.expression, isLiteralIdentifier);
   switch (node.type) {
+    case "Identifier":
+      return isLiteralIdentifier(node);
     case "Literal":
       return true;
     case "TemplateLiteral":
       return node.expressions.length === 0;
     case "UnaryExpression":
-      return (node.operator === "+" || node.operator === "-") && isStaticCase(node.argument);
+      return (node.operator === "+" || node.operator === "-") && isStaticCase(node.argument, isLiteralIdentifier);
     case "ArrayExpression":
       return node.elements.every(
-        (element) => element !== null && element.type !== "SpreadElement" && isStaticCase(element),
+        (element) => element !== null && element.type !== "SpreadElement" && isStaticCase(element, isLiteralIdentifier),
       );
     case "ObjectExpression":
       return node.properties.every(
@@ -87,7 +89,7 @@ function isStaticCase(node: Node): boolean {
           property.type === "Property" &&
           !property.computed &&
           (property.value as Node).type !== "AssignmentPattern" &&
-          isStaticCase(property.value),
+          isStaticCase(property.value, isLiteralIdentifier),
       );
     default:
       return false;
@@ -158,6 +160,8 @@ export default defineRule({
       }
       return identifiers.has(identifier);
     };
+    const isLiteralIdentifier = (identifier: Identifier): boolean => identifier.name === "undefined" &&
+      (findVariable(context.sourceCode.getScope(identifier), "undefined")?.defs.length ?? 0) === 0;
     const isFrameworkTest = (identifier: Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "test", TEST_CALLERS) !== null;
     const isFrameworkAssertion = (identifier: Identifier): boolean => acceptedTestFrameworkName(context.sourceCode, identifier, "assertion", ASSERTION_ROOTS) !== null;
     return {
@@ -184,7 +188,7 @@ export default defineRule({
           cases.elements.length < MIN_CASES ||
           !cases.elements.every(
             (element) =>
-              element !== null && element.type !== "SpreadElement" && isStaticCase(element),
+              element !== null && element.type !== "SpreadElement" && isStaticCase(element, isLiteralIdentifier),
           ) ||
           !walkOwnScope(node.body, (current) => isAssertion(current, isFrameworkAssertion)) ||
           walkOwnScope(node.body, (current) => opensSubtest(current, callbackParameters)) ||
