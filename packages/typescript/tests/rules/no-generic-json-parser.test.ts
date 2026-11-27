@@ -6,6 +6,18 @@ const TESTER = ruleTester();
 
 TESTER.run("no-generic-json-parser", rule, {
   valid: [
+    "import { z } from 'zod'; const Body = z.object({ speed: z.number() }); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume(jsonBody(text).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { const value = JSON.parse(raw); return Body.parse(value); } consume(jsonBody(text).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume(jsonBody(text)); consume(jsonBody(text)[key]);",
+    "function run(jsonBody: (raw: string) => Record<string, unknown>) { consume(jsonBody(text).speed); }",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); async function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume((await jsonBody(text)).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function* jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume(jsonBody(text).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); const jsonBody = (raw: string) => Body.parse(JSON.parse(raw)); consume(jsonBody(text).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } jsonBody = replacement; consume(jsonBody(text).speed);",
+    "import { jsonBody } from './parser.js'; consume(jsonBody(text).speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return [Body.parse(JSON.parse(raw))]; } consume(jsonBody(text)[0].speed);",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } function forward(): unknown { return jsonBody(text).payload; }",
+    "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume(z.number().parse(jsonBody(text).speed));",
     "import { z } from 'zod'; function load(raw: unknown) { const result = z.object({ id: z.string() }).safeParse(raw); if (!result.success) return; return result.data.id; }",
     { name: "opaque JSON forwarding", code: "import { z } from 'zod'; function load(raw) { return z.json().parse(raw); }" },
     { name: "Promise chaining is not a payload field read", code: "import { z } from 'zod'; z.json().parseAsync(raw).then(forward);" },
@@ -18,6 +30,8 @@ TESTER.run("no-generic-json-parser", rule, {
     { name: "generated artifact", filename: "src/generated/parser.ts", code: "import { z } from 'zod'; function load(raw: unknown) { const result = z.record(z.string(), z.unknown()).safeParse(raw); if (!result.success) return; return result.data.id; }" },
   ],
   invalid: [
+    { code: "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } const body = jsonBody(text); consume(body.speed);", errors: [{ messageId: "genericParser" }] },
+    { code: "import { z } from 'zod'; const Body = z.record(z.string(), z.unknown()); function jsonBody(raw: string) { return Body.parse(JSON.parse(raw)); } consume(jsonBody(text).voice); consume(jsonBody(other).speed);", errors: [{ messageId: "genericParser" }] },
     { name: "local suppression (reported: Oxlint's RuleTester ignores disable directives)", code: "import { z } from 'zod';\n// eslint-disable-next-line @rule-tester/no-generic-json-parser -- compatibility parser has a separate contract\nconst body = z.record(z.string(), z.unknown()).parse(raw); consume(body.version);", errors: [{ messageId: "genericParser" }] },
     { code: "import { z } from 'zod'; function load(raw: unknown) { const result = z.record(z.string(), z.unknown()).safeParse(raw); if (!result.success) return; return result.data.id; }", errors: [{ messageId: "genericParser" }] },
     ...[

@@ -21,6 +21,18 @@ function uuidPredicate(schema = "z.uuid()", expression = "UuidSchema.safeParse(v
 
 TESTER.run("no-partial-type-predicate", rule, typed({
   valid: [
+    { code: 'export function check(value: string | undefined): value is string { if (value === undefined) return false; return true; }' },
+    { code: 'export function check(value: unknown): value is string { if (typeof value !== "string") return false; return true; }' },
+    { code: 'export function check(value: string | undefined): value is string { if (!value) throw new Error("missing"); return true; }' },
+    { code: 'export function check(value: string | undefined): value is string { if (!value) return false; else return true; }' },
+    { code: 'export function check(value: string | undefined, strict: boolean): value is string { if (!value) return false; return strict; }' },
+    { code: 'export function check(value: string | undefined): value is string { consume(value); if (!value) return false; return true; }' },
+    { code: 'export class Check { check(value: string | undefined): value is string { if (!value) return false; return true; } }' },
+    { code: 'export function check(value: "ready" | undefined): value is "ready"; export function check(value: string | undefined): value is string { if (!value) return false; return true; }' },
+    { code: 'export function check<T extends string>(value: T | undefined): value is T { if (!value) return false; return true; }' },
+    { code: 'export const check: (value: string | undefined) => boolean = (value: string | undefined): value is string => { if (!value) return false; return true; };' },
+    { code: 'export function check(value: string | undefined): value is string { if (!value && value === undefined) return false; return true; }' },
+    { code: 'export function check(text: string | undefined): text is string { if (!text?.trim() || isSkipAnswer(text)) return false; return true; }' },
     {
       name: "local paths alias has its own schema semantics",
       filename: "uuid-local-module/guard.ts",
@@ -123,6 +135,9 @@ TESTER.run("no-partial-type-predicate", rule, typed({
     ].map(([name, code])=>({name,code})),
   ],
   invalid: [
+    { code: 'export function check(value: string | undefined): value is string { if (!value) return false; return value.startsWith("a"); }', output: null, errors: [{ messageId: "partialPredicate", data: { target: "string", witness: '`""`' } }] },
+    { code: 'export function check(value: unknown): value is string { if (typeof value !== "string" || value.length === 0) return false; return value.trim() === value; }', output: null, errors: [{ messageId: "partialPredicate", data: { target: "string", witness: '`""`' } }] },
+    { code: 'export function check(value: number | null): value is number { if (!value) { return false; } return Number.isSafeInteger(value); }', output: null, errors: [{ messageId: "partialPredicate", data: { target: "number", witness: "`0`" } }] },
     ...[
       ["UUID partial predicate example", PARTIAL_UUID_EXAMPLE],
       ["UUID legacy string chain", uuidPredicate('z.string().uuid()')],

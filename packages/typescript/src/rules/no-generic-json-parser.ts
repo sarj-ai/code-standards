@@ -13,7 +13,7 @@ import { docsUrl } from "../utils/docs-url.js";
 import { importSpecifierName } from "../utils/import-specifier-name.js";
 import { isGeneratedFile } from "../utils/paths.js";
 import { findVariable, getPropertyName } from "../utils/static-string.js";
-import { enclosingFunction, stableConstInitializer, stableValueBinding, typeOnlyReference, writtenMember } from "../utils/stable-value-binding.js";
+import { enclosingFunction, stableConstInitializer, stableFunctionDeclaration, stableValueBinding, typeOnlyReference, writtenMember } from "../utils/stable-value-binding.js";
 import { isZodModule } from "../utils/zod.js";
 import { successfulParseRead } from "./_successful-parse-read.js";
 
@@ -60,8 +60,15 @@ export default defineRule({
         }
         case "MemberExpression":
           return getPropertyName(node) === "data" ? successfulData(node) : null;
-        case "CallExpression":
-          return throwingParse(node, awaited);
+        case "CallExpression": {
+          const parsed = throwingParse(node, awaited);
+          if (parsed !== null) return parsed;
+          const callee = unwrapExpression(node.callee);
+          const helper = callee.type === "Identifier" ? stableFunctionDeclaration(context.sourceCode, callee) : null;
+          if (helper === null || helper.async || helper.generator || helper.body?.body.length !== 1) return null;
+          const statement = helper.body.body[0];
+          return statement?.type === "ReturnStatement" && statement.argument !== null ? parser(statement.argument, seen, awaited) : null;
+        }
         default:
           return null;
       }

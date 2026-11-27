@@ -12,7 +12,7 @@ export const NO_GENERIC_JSON_PARSER_DOCUMENTATION = {
   runtimeImports: ["zod"],
   references: ["https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-unsafe-dictionary-type.ts"],
   limitations: [
-    "Checks static property reads on direct or stable-const aliases of Zod parse/parseAsync outputs and proven successful safeParse/awaited safeParseAsync data from json, any, unknown, record and partialRecord schemas. Resolves runtime Zod imports, local const schema aliases and identity-preserving schema wrappers.",
+    "Checks static property reads on direct, stable-const-aliased or local single-return-function results of Zod parse/parseAsync outputs and proven successful safeParse/awaited safeParseAsync data from json, any, unknown, record and partialRecord schemas. Resolves runtime Zod imports, local const schema aliases and identity-preserving schema wrappers.",
     "Dynamic dictionary indexing, opaque JSON forwarding/storage, imported schemas, recursive lazy definitions, custom validator implementations, mutable aliases, unproven success guards and transformation/refinement callbacks are excluded. Subsequent parser validation with a specific or unresolved contract and meaningful typed/finite-key records are preserved. Generated/vendor files are excluded; maintained tests are checked.",
     "The rule identifies a missing declared field contract; it does not infer all external payload fields or automatically change runtime validation.",
   ],

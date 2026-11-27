@@ -32,7 +32,8 @@ type PrimitiveKind = "string" | "number" | "bigint" | "boolean";
 interface Predicate {
   readonly annotation: ESTree.TSTypePredicate;
   readonly parameter: Identifier;
-  readonly expression: Node;
+  readonly expression?: Node | undefined;
+  readonly guard?: Node | undefined;
   readonly kind: PrimitiveKind;
   readonly input: Type;
   readonly inputIsTarget: boolean;
@@ -74,7 +75,8 @@ function primitivePredicate(candidate: Candidate, native: NativeTypes): Predicat
   const unsafe = flags.Any | flags.Never | flags.TypeParameter | flags.Conditional | flags.IndexedAccess;
   if (kind === undefined || (input.flags & unsafe) !== 0 || !checker.isTypeAssignableTo(target, input)) return undefined;
   const expression = returnedExpression(node);
-  return expression === undefined ? undefined : { annotation, parameter, expression, kind, input, inputIsTarget: checker.isTypeAssignableTo(input, target) };
+  const guard = expression === undefined ? leadingGuard(node) : undefined;
+  return expression === undefined && guard === undefined ? undefined : { annotation, parameter, expression, guard, kind, input, inputIsTarget: checker.isTypeAssignableTo(input, target) };
 }
 
 function primitiveKind(type: Type, native: NativeTypes): PrimitiveKind | undefined {
@@ -118,11 +120,15 @@ export default defineRule({
       const sourceCode = context.sourceCode;
       const predicate = primitivePredicate(candidate, native);
       if (predicate === undefined) return undefined;
-      const uuidWitness = predicate.kind === "string" ? uuidPredicateWitness(predicate.expression, predicate.parameter, sourceCode, native) : undefined;
-      if (uuidWitness !== undefined) return { witness: uuidWitness, target: "string" };
-      const refinement = refinementExpression(predicate, sourceCode);
-      if (refinement === undefined) return undefined;
-      const witness = rejectedWitness(refinement, predicate, sourceCode);
+      let witness: Primitive | undefined;
+      if (predicate.expression === undefined) witness = guardWitness(predicate.guard, predicate, sourceCode);
+      else {
+        const uuidWitness = predicate.kind === "string" ? uuidPredicateWitness(predicate.expression, predicate.parameter, sourceCode, native) : undefined;
+        if (uuidWitness !== undefined) return { witness: uuidWitness, target: "string" };
+        const refinement = refinementExpression(predicate.expression, predicate, sourceCode);
+        if (refinement === undefined) return undefined;
+        witness = rejectedWitness(refinement, predicate, sourceCode);
+      }
       if (witness === undefined) return undefined;
       if (typeof witness === "number" && !numericWitnessInInput(witness, predicate.input, native)) return undefined;
       return { witness, target: predicate.kind };
@@ -168,8 +174,26 @@ function returnedExpression(node: FunctionNode): Node | undefined {
   return node.body.body.length === 1 && statement?.type === "ReturnStatement" && statement.argument !== null ? unwrapExpression(statement.argument) : undefined;
 }
 
-function refinementExpression(predicate: Predicate, sourceCode: SourceCode): Node | undefined {
-  const expression = predicate.expression;
+function leadingGuard(node: FunctionNode): Node | undefined {
+  if (node.body?.type !== "BlockStatement" || node.body.body.length < 2) return undefined;
+  const guard = node.body.body[0];
+  if (guard?.type !== "IfStatement" || guard.alternate !== null) return undefined;
+  const consequent = guard.consequent;
+  const statement = consequent.type === "BlockStatement" && consequent.body.length === 1 ? consequent.body[0] : consequent;
+  return statement?.type === "ReturnStatement" && statement.argument?.type === "Literal" && statement.argument.value === false ? guard.test : undefined;
+}
+
+function guardWitness(expression: Node | undefined, predicate: Predicate, sourceCode: SourceCode): Primitive | undefined {
+  if (expression === undefined) return undefined;
+  const operand = unwrapExpression(expression);
+  if (operand.type === "LogicalExpression" && operand.operator === "||") {
+    return guardWitness(operand.left, predicate, sourceCode) ?? guardWitness(operand.right, predicate, sourceCode);
+  }
+  return operand.type === "UnaryExpression" && operand.operator === "!" && sameParameter(operand.argument, predicate.parameter, sourceCode) ?
+    falsyWitness(predicate.kind) : rejectedWitness(operand, predicate, sourceCode, true);
+}
+
+function refinementExpression(expression: Node, predicate: Predicate, sourceCode: SourceCode): Node | undefined {
   if (expression.type !== "LogicalExpression" || expression.operator !== "&&") {
     return predicate.inputIsTarget || doubleNegation(expression, predicate.parameter, sourceCode) ? expression : undefined;
   }
@@ -197,19 +221,19 @@ function sameParameter(node: Node, parameter: Identifier, sourceCode: SourceCode
   return binding !== null && binding === findVariable(sourceCode.getScope(value), value.name);
 }
 
-function rejectedWitness(expression: Node, predicate: Predicate, sourceCode: SourceCode): Primitive | undefined {
-  if (doubleNegation(expression, predicate.parameter, sourceCode)) return falsyWitness(predicate.kind);
-  if (predicate.kind === "boolean" && sameParameter(expression, predicate.parameter, sourceCode)) return false;
+function rejectedWitness(expression: Node, predicate: Predicate, sourceCode: SourceCode, outcome = false): Primitive | undefined {
+  if (!outcome && doubleNegation(expression, predicate.parameter, sourceCode)) return falsyWitness(predicate.kind);
+  if (!outcome && predicate.kind === "boolean" && sameParameter(expression, predicate.parameter, sourceCode)) return false;
   if (expression.type !== "BinaryExpression") return undefined;
   const bound = literal(expression.right);
   if (bound === undefined) return undefined;
   if (sameParameter(expression.left, predicate.parameter, sourceCode) && typeof bound === predicate.kind) {
-    return witnesses(bound).find((value) => comparison(value, expression.operator, bound) === false);
+    return witnesses(bound).find((value) => comparison(value, expression.operator, bound) === outcome);
   }
   const left = unwrapExpression(expression.left);
   if (predicate.kind !== "string" || typeof bound !== "number" || left.type !== "MemberExpression" || left.optional ||
     getPropertyName(left) !== "length" || !sameParameter(left.object, predicate.parameter, sourceCode)) return undefined;
-  return lengthWitnesses(bound).find((value) => comparison(value.length, expression.operator, bound) === false);
+  return lengthWitnesses(bound).find((value) => comparison(value.length, expression.operator, bound) === outcome);
 }
 
 function falsyWitness(kind: PrimitiveKind): Primitive {
