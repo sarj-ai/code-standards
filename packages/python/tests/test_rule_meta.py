@@ -102,8 +102,7 @@ def _ledger() -> dict[str, tuple[str, ...] | None]:
         assert isinstance(value, list), f"ledger[{code}] rename history must be an array"
         assert value, f"ledger[{code}] rename history must not be empty"
         history_items: list[str] = []
-        for index in range(len(value)):  # pyright: ignore[reportUnknownArgumentType] -- inspect dynamically loaded registry entries before validating their metadata.
-            rule_id: object = value[index]  # pyright: ignore[reportUnknownVariableType] -- inspect dynamically loaded registry entries before validating their metadata.
+        for rule_id in value:  # pyright: ignore[reportUnknownVariableType] -- inspect dynamically loaded registry entries before validating their metadata.
             assert isinstance(rule_id, str), f"ledger[{code}] rename history must contain rule ids"
             assert rule_id, f"ledger[{code}] rename history must not contain empty ids"
             history_items.append(rule_id)

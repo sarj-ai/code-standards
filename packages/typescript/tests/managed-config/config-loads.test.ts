@@ -133,6 +133,8 @@ const FILES: Readonly<Record<string, string>> = {
   ].join("\n"),
   "src/promise-params.js": "export const value = Promise.resolve(1, 2).then();\n",
   "src/promise-params-valid.js": "export const value = Promise.resolve(1).then((result) => result);\n",
+  "src/modern-constructs.ts": "export const combined = Object.assign({}, { active: true });\nexport const power = Math.pow(2, 3);\nexport const number = parseInt(\"111110111\", 2);\nexport const object = new Object();\nexport const array = new Array(\"entry\");\nexport const population = 1000000;\nexport function update(parent: Element, child: Element, replacement: Element): void {\n  parent.appendChild(child);\n  parent.removeChild(child);\n  parent.replaceChild(replacement, child);\n}\n",
+  "src/modern-constructs-valid.ts": "export const combined = { ...{ active: true } };\nexport const power = 2 ** 3;\nexport const number = 0b1_1111_0111;\nexport const object = {};\nexport const array = [\"entry\"];\nexport const population = 1_000_000;\nexport function update(parent: Element, child: Element, replacement: Element): void {\n  parent.append(child);\n  child.remove();\n  child.replaceWith(replacement);\n}\n",
   "src/new-upstream-rules.ts": "class Session { constructor(readonly id: string) {} }\nexport const session: Session = { id: \"guest\" };\nexport function run(input: string, verbose = false, options = { retries: 1 }) { return { input, verbose, options }; }\nexport function combine(enabled: boolean, overrides: Record<string, string>) { return { ...enabled && overrides }; }\n",
   "src/new-upstream-rules-valid.ts": "class Session { constructor(readonly id: string) {} }\nexport const session: Session = new Session(\"guest\");\nexport function run(input: string, { verbose = false, retries = 1 } = {}) { return { input, verbose, retries }; }\nexport function combine(enabled: boolean, overrides: Record<string, string>) { return { ...(enabled && overrides) }; }\n",
   "src/regexp-match.js": "export const match = \"abc\".match(/b/);\n",
@@ -199,6 +201,22 @@ describe("the managed Oxlint config in a consumer", () => {
     expect(codesOf("src/regexp-match.js")).toContain("unicorn-js(prefer-regexp-exec)");
     expect(codesOf("src/regexp-exec.js")).not.toContain("unicorn-js(prefer-regexp-exec)");
     expect(codesOf("src/async-cleanup.ts")).not.toContain("unicorn-js(no-async-promise-finally)");
+  });
+
+  it("runs native modern-construct warnings and accepts their alternatives", () => {
+    const expected = [
+      "eslint(prefer-object-spread)",
+      "eslint(prefer-exponentiation-operator)",
+      "eslint(prefer-numeric-literals)",
+      "eslint(no-object-constructor)",
+      "unicorn(no-new-array)",
+      "unicorn(numeric-separators-style)",
+      "unicorn(prefer-dom-node-append)",
+      "unicorn(prefer-dom-node-remove)",
+      "unicorn(prefer-modern-dom-apis)",
+    ];
+    expect(codesOf("src/modern-constructs.ts")).toEqual(expect.arrayContaining(expected));
+    expect(codesOf("src/modern-constructs-valid.ts").filter(code => expected.includes(code))).toEqual([]);
   });
 
   it("loads every plugin without a crash", () => {

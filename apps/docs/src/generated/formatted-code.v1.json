@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "608991a362d24a0d4ffdcae08216950e155078cf1d1e671b97a2c81d360635fb",
-  "cliSha256": "7c6b39fdcf46eca5f177aef57666733b3106cc16e1060cca04779e2f13cb6d08",
+  "catalogSha256": "17a17a4642366122b30d4208c04448566d109af96b01896818f9c03aeca7db1c",
+  "cliSha256": "78bd77a0fdecd0d9180e487ad434d306bd070140e55ea222d1eb5febc7b7dd1a",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -19298,6 +19298,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "python:prefer-direct-iteration": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "iteration.py",
+              "source": "def run(files):\n    for item in files:\n        consume(item)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iteration.py",
+          "id": "direct-values",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Iterate values directly"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "iteration.py",
+              "source": "def run(files):\n    for index in range(len(files)):\n        consume(files[index])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "iteration.py",
+          "id": "index-only-reads",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The index only reads sequence items"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "python:prefer-discriminated-model-union": {
       "examples": [
         {
@@ -19949,6 +19984,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "The composition boundary supplies the collaborator"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-itertools-batched": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "batches.py",
+              "source": "from itertools import batched\n\n\ndef run(files, size):\n    for batch in batched(files, size, strict=False):\n        consume(batch)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "batches.py",
+          "id": "one-batch-size",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "batched owns the batch size"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "batches.py",
+              "source": "def run(files, size):\n    for offset in range(0, len(files), size):\n        consume(files[offset : offset + size])\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "batches.py",
+          "id": "repeated-batch-size",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "The range and slice repeat the batch size"
         }
       ],
       "optionsSchemaSource": null

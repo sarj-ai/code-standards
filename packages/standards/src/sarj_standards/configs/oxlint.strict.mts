@@ -1078,6 +1078,15 @@ const RULES = {
   "react/invariant": "error",
   "react/syntax": "error",
   "react/rule-suppression": "error",
+  "prefer-object-spread": "warn",
+  "prefer-exponentiation-operator": "warn",
+  "prefer-numeric-literals": "warn",
+  "no-object-constructor": "warn",
+  "unicorn/no-new-array": "warn",
+  "unicorn/numeric-separators-style": "warn",
+  "unicorn/prefer-dom-node-append": "warn",
+  "unicorn/prefer-dom-node-remove": "warn",
+  "unicorn/prefer-modern-dom-apis": "warn",
 } satisfies OxlintConfig["rules"];
 
 // Vitest rules: on in tests when Vitest is a test framework, off in Bun and Playwright tests.
