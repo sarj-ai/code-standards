@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from enum import Enum, auto
+from itertools import chain
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, Final, final, override
@@ -93,7 +94,7 @@ class AsyncMockCallWithoutAwaitAssertion(Rule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Autofix only adds a matching assert_awaited_once[_with] after the original call assertion in an argument-free, undecorated module async test whose exact body creates a fresh unconfigured canonical AsyncMock, awaits it once, and asserts its single call. With-arguments forms require identical primitive literals. Ambiguous imports, mocks, metadata/frame capabilities, fixtures, helpers, configuration, comments, and other statements remain for review; existing call assertions are retained.",
-            "Only direct statements in collected test functions and methods are inspected; fixtures, helpers, nested blocks, and generated files are excluded.",
+            "Direct statements and statements in if/elif/else branches in collected test functions and methods are inspected; fixtures, helpers, other nested blocks, and generated files are excluded.",
             "Requires a fresh local unittest.mock.AsyncMock constructor with unshadowed imports; aliases, reassignment, reset, and ambiguous configuration are excluded.",
             "Visible provider replacement, escape or unresolved lexical ownership retains WARNING; only the closed canonical AsyncMock provider proof blocks.",
             "Only the mock itself and unchanged immediate children of unspecced, unwrapped mocks are inferred; spec children, return values, and deeper chains are excluded.",
@@ -340,10 +341,15 @@ def _uncovered_calls(
 ) -> Iterator[ast.Call | ast.Attribute]:
     nodes = tuple(walk_ast(test))
     bindings = _mock_bindings(imports, test.body, writes)
-    covered = _await_oracles(test.body, builtin_len=builtin_len and imports.builtin_is_unshadowed("len"))
+    builtin_len = builtin_len and imports.builtin_is_unshadowed("len")
+    covered = _await_oracles(test.body, builtin_len=builtin_len)
+    branch_covered = covered | _await_oracles(
+        [node for node in nodes if isinstance(node, ast.stmt)],
+        builtin_len=builtin_len,
+    )
     reported: set[_Reference] = set()
-    for statement in test.body:
-        for reference, oracle in _call_oracles(statement):
+    for statements in (test.body, _branch_statements(test.body)):
+        for reference, oracle in chain.from_iterable(_call_oracles(statement) for statement in statements):
             if not reference or reference in covered or reference in reported:
                 continue
             binding = bindings.get(reference[0])
@@ -355,6 +361,18 @@ def _uncovered_calls(
                 continue
             reported.add(reference)
             yield oracle
+        covered = branch_covered
+
+
+def _branch_statements(statements: list[ast.stmt]) -> Iterator[ast.stmt]:
+    pending: list[ast.stmt] = [statement for statement in statements if isinstance(statement, ast.If)]
+    while pending:
+        statement = pending.pop(0)
+        match statement:
+            case ast.If(body=body, orelse=orelse):
+                pending.extend((*body, *orelse))
+            case _:
+                yield statement
 
 
 def _call_oracles(statement: ast.stmt) -> Iterator[tuple[_Reference, ast.Call | ast.Attribute]]:

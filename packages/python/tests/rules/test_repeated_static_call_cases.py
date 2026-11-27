@@ -429,3 +429,83 @@ def test_unrelated_inline_suppression_does_not_hide_finding() -> None:
     """
 
     assert len(_check(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "attribute",
+    ['importlib.import_module("app.text").parse', "text_module.parse", 'import_module("app.text").parse'],
+)
+def test_flags_literal_cases_bound_from_module_loader(attribute: str) -> None:
+    source = f"""
+    import importlib
+
+    def _parse():
+        return {attribute}
+
+    def test_parse():
+        parse = _parse()
+
+        assert parse("a") == 1
+        assert parse("b") == 2
+        assert parse("c") == 3
+    """
+    [diag] = _check(source)
+    assert (diag.code, diag.line) == ("SARJ413", 10)
+    assert "3 same-shape literal call assertions" in diag.message
+
+
+@pytest.mark.parametrize(
+    ("loader", "setup"),
+    [
+        ("def make_parser():\n    return Parser()", "parse = make_parser()"),
+        ("def _parse():\n    return text_module.parse", 'parse = _parse("strict")'),
+        (
+            'def _parse():\n    module = importlib.import_module("app.text")\n    return module.parse',
+            "parse = _parse()",
+        ),
+        ("def _parse():\n    return text_module.parse", "other = _parse()"),
+        ("def _parse():\n    return text_module.parse", "parse = _parse()\nprepare()"),
+        (
+            "def _parse():\n    return text_module.parse\ndef _parse():\n    return text_module.parse",
+            "parse = _parse()",
+        ),
+        ("async def _parse():\n    return text_module.parse", "parse = _parse()"),
+        ("@decorator\ndef _parse():\n    return text_module.parse", "parse = _parse()"),
+        ("def _parse(mode):\n    return text_module.parse", "parse = _parse()"),
+        ("def _parse(*args):\n    return text_module.parse", "parse = _parse()"),
+        ("def _parse(**kwargs):\n    return text_module.parse", "parse = _parse()"),
+        ("def _parse(*, mode):\n    return text_module.parse", "parse = _parse()"),
+        ('def _parse():\n    return importlib.import_module("app.text", "extra").parse', "parse = _parse()"),
+        ('def _parse():\n    return importlib.import_module(name="app.text").parse', "parse = _parse()"),
+        ("def _parse():\n    return importlib.import_module(module_name).parse", "parse = _parse()"),
+        ("def _parse():\n    return factory().parse", "parse = _parse()"),
+        ("def _parse():\n    return text_module.parse", "parse: Callable = _parse()"),
+        ("def _parse():\n    return text_module.parse", "parse = other = _parse()"),
+    ],
+)
+def test_excludes_unproven_loader_bindings(loader: str, setup: str) -> None:
+    source = (
+        loader
+        + "\n\ndef test_parse():\n"
+        + textwrap.indent(setup, "    ")
+        + """
+    assert parse("a") == 1
+    assert parse("b") == 2
+    assert parse("c") == 3
+"""
+    )
+    assert _check(source) == []
+
+
+def test_excludes_loader_binding_between_assertions() -> None:
+    source = """
+    def _parse():
+        return text_module.parse
+
+    def test_parse():
+        assert parse("a") == 1
+        parse = _parse()
+        assert parse("b") == 2
+        assert parse("c") == 3
+    """
+    assert _check(source) == []

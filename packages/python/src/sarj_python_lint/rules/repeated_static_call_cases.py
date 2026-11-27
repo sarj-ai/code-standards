@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import Counter
 from io import StringIO
 from pathlib import PurePosixPath
 import re
@@ -112,7 +113,7 @@ class RepeatedStaticCallCases(Rule):
         aliases=("repeated-static-call-assertions",),
         limitations=(
             "Only undecorated, zero-parameter pytest functions and methods on undecorated, base-free Test* classes are checked.",
-            "The entire executable test body must be at least three top-level assertions of the same direct-name call with literal inputs and expectations.",
+            "The entire executable test body must be at least three top-level assertions of the same direct-name call with literal inputs and expectations, optionally preceded by one binding of the asserted callee from a module-level zero-argument loader that returns a named module attribute.",
             "Assertion messages, zero-argument calls, likely mutators, mocks, snapshots, spies, comments, and intervening setup are excluded.",
             "Exception and pytest.raises case tables are intentionally outside this assertion-only signal.",
             "Common mapping accessors are excluded because repeated field assertions usually describe one cohesive object contract, not independent input cases.",
@@ -162,11 +163,12 @@ class RepeatedStaticCallCases(Rule):
         if tree is None:
             return []
         unsafe_callees = _mutating_aliases(tree)
+        loaders = _module_loaders(tree.body)
         tests = list(_test_functions(tree))
         rough_candidates = [
             test
             for test in tests
-            if any(_is_whole_executable_body(test, run) for run in _runs(test, frozenset(), unsafe_callees))
+            if any(_is_whole_executable_body(test, run, loaders) for run in _runs(test, frozenset(), unsafe_callees))
         ]
         if not rough_candidates:
             return []
@@ -175,7 +177,7 @@ class RepeatedStaticCallCases(Rule):
             (test, run)
             for test in rough_candidates
             for run in _runs(test, comments, unsafe_callees)
-            if _is_whole_executable_body(test, run)
+            if _is_whole_executable_body(test, run, loaders)
         ]
         if not candidate_runs:
             return []
@@ -388,11 +390,57 @@ def _runs(
         yield current
 
 
+def _module_loaders(statements: list[ast.stmt]) -> frozenset[str]:
+    counts = Counter(statement.name for statement in statements if isinstance(statement, _FUNC_NODES))
+    loaders: set[str] = set()
+    for statement in statements:
+        if (
+            not isinstance(statement, ast.FunctionDef)
+            or counts[statement.name] != 1
+            or statement.decorator_list
+            or any(
+                (
+                    statement.args.posonlyargs,
+                    statement.args.args,
+                    statement.args.kwonlyargs,
+                    statement.args.vararg,
+                    statement.args.kwarg,
+                )
+            )
+        ):
+            continue
+        body = statement.body[1:] if ast.get_docstring(statement, clean=False) is not None else statement.body
+        match body:
+            case [ast.Return(value=ast.Attribute(value=value))] if _dotted_name(value) is not None:
+                loaders.add(statement.name)
+            case [
+                ast.Return(
+                    value=ast.Attribute(value=ast.Call(func=func, args=[ast.Constant(value=str())], keywords=[]))
+                )
+            ]:
+                if (callee := _dotted_name(func)) is not None and callee[-1] == "import_module":
+                    loaders.add(statement.name)
+            case _:
+                pass
+    return frozenset(loaders)
+
+
 def _is_whole_executable_body(
     test: ast.FunctionDef | ast.AsyncFunctionDef,
     run: list[ast.Assert],
+    loaders: frozenset[str],
 ) -> bool:
     body = test.body[1:] if ast.get_docstring(test, clean=False) is not None else test.body
+    if len(body) == len(run) + 1:
+        match body[0]:
+            case ast.Assign(
+                targets=[ast.Name(id=name)], value=ast.Call(func=ast.Name(id=loader), args=[], keywords=[])
+            ) if loader in loaders:
+                shape = _assertion_shape(run[0], frozenset())
+                if shape is not None and shape.skeleton[0] == (name,):
+                    body = body[1:]
+            case _:
+                pass
     return len(body) == len(run) and all(statement is assertion for statement, assertion in zip(body, run, strict=True))
 
 

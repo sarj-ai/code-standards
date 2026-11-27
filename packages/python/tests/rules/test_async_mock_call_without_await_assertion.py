@@ -102,7 +102,6 @@ def test_preserves_existing_await_oracles(assertion: str) -> None:
         "send = AsyncMock()\nalias = send.child\nalias.reset_mock()\nsend.child.assert_called_once()",
         "send = AsyncMock()\naliases = [send]\naliases[0].reset_mock()\nsend.assert_called_once()",
         "global send\nsend = AsyncMock()\nsend.assert_called_once()",
-        "send = AsyncMock()\nif flag:\n    send.assert_called_once()",
         "send = AsyncMock()\nsend.return_value.assert_called_once()",
         "send = AsyncMock()\nsend.assert_not_called()",
         "send = AsyncMock()\nsend.assert_has_calls([])",
@@ -501,7 +500,6 @@ def test_labeled_call_and_await_evidence(case: EvaluationCase) -> None:
         "alias = send\nassert alias.call_count == 1",
         "send = fixture\nassert send.call_count == 1",
         "send.reset_mock()\nassert send.called",
-        "if enabled:\n    assert send.call_count == 1",
         "def helper():\n    assert send.called",
         "send.child = replacement\nassert send.child.call_count == 1",
     ],
@@ -594,7 +592,6 @@ def test_positive_called_state_uses_native_attribute_grammar(receiver: str) -> N
         "send = AsyncMock()\nsend = fixture\nassert send. called",
         "send = fixture\nassert send. called",
         "send = AsyncMock()\ncalled = 'unrelated string data'",
-        "send = AsyncMock()\nif enabled:\n    assert send. called",
     ],
 )
 def test_called_hint_preserves_semantic_boundaries(body: str) -> None:
@@ -602,3 +599,81 @@ def test_called_hint_preserves_semantic_boundaries(body: str) -> None:
         f"    {line}" for line in body.splitlines()
     )
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "send = AsyncMock()\nif flag:\n    send.assert_called_once()",
+        "if enabled:\n    assert send.call_count == 1",
+        "send = AsyncMock()\nif enabled:\n    assert send. called",
+    ],
+)
+def test_reports_previously_excluded_branch_call_oracles(body: str) -> None:
+    setup = "    send = AsyncMock()\n" if body.startswith("if ") else ""
+    source = (
+        "from unittest.mock import AsyncMock\nasync def test_delivery():\n"
+        + setup
+        + "\n".join(f"    {line}" for line in body.splitlines())
+    )
+    [diagnostic] = _check(source)
+    assert diagnostic.code == "SARJ456"
+
+
+@pytest.mark.parametrize(
+    ("body", "line"),
+    [
+        ("if enabled:\n    queue.send.assert_called_once()", 7),
+        ("if enabled:\n    pass\nelse:\n    assert queue.call_count == 1", 9),
+        ("if enabled:\n    pass\nelif fallback:\n    assert queue.call_count == 1", 9),
+        ("if enabled:\n    if ready:\n        queue.send.assert_called_once()", 8),
+    ],
+)
+def test_reports_branch_call_oracles_at_the_assertion(body: str, line: int) -> None:
+    source = """
+        from unittest.mock import AsyncMock
+        async def test_delivery(enabled):
+            queue = AsyncMock()
+            await deliver(queue)
+    """
+    source = dedent(source) + "\n".join(f"    {statement}" for statement in body.splitlines())
+    [diagnostic] = _check(source)
+    assert (diagnostic.code, diagnostic.line) == ("SARJ456", line)
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        "if enabled:\n    queue.send.assert_called_once()\n    queue.send.assert_awaited_once()",
+        "if enabled:\n    queue.send.assert_called_once()\nqueue.send.assert_awaited_once()",
+        "if enabled:\n    queue.send.assert_called_once()\nwith context():\n    queue.send.assert_awaited_once()",
+        "with pytest.raises(AssertionError):\n    queue.send.assert_called_once()",
+        "try:\n    queue.send.assert_called_once()\nexcept AssertionError:\n    pass",
+        "for item in items:\n    queue.send.assert_called_once()",
+        "while enabled:\n    queue.send.assert_called_once()",
+        "match enabled:\n    case True:\n        queue.send.assert_called_once()",
+        "if enabled:\n    assert not queue.called",
+        "if enabled:\n    with context():\n        queue.send.assert_called_once()",
+        "with context():\n    if enabled:\n        queue.send.assert_called_once()",
+        "if enabled:\n    def helper():\n        queue.send.assert_called_once()",
+        "if enabled:\n    queue.send.assert_called_once()\nqueue.reset_mock()",
+        "alias = queue\nif enabled:\n    queue.send.assert_called_once()",
+    ],
+)
+def test_branch_call_oracles_preserve_await_evidence_and_scope(body: str) -> None:
+    source = "from unittest.mock import AsyncMock\nasync def test_delivery(enabled):\n    queue = AsyncMock()\n"
+    source += "\n".join(f"    {line}" for line in body.splitlines())
+    assert _check(source) == []
+
+
+def test_top_level_call_oracle_keeps_priority_over_branch_oracles() -> None:
+    source = """
+        from unittest.mock import AsyncMock
+        async def test_delivery(enabled):
+            queue = AsyncMock()
+            if enabled:
+                queue.send.assert_called_once()
+            queue.send.assert_called_once()
+    """
+    [diagnostic] = _check(source)
+    assert (diagnostic.code, diagnostic.line) == ("SARJ456", 7)
