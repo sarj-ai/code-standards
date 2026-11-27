@@ -33,7 +33,7 @@ const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
         },
       ],
       focusPath: "src/service.ts",
-      expectedCount: 1,
+      expectedCount: 2,
       public: true,
     },
     {
@@ -55,7 +55,7 @@ const REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION = {
         },
       ],
       focusPath: "src/service.ts",
-      expectedCount: 1,
+      expectedCount: 2,
     },
   ],
 } as const;
@@ -65,77 +65,16 @@ const SRC = "/repo/src/domain/record-normalizer/service.ts";
 RULE_TESTER.run("require-port-for-service", rule, {
   valid: [
     {
+      filename: "/repo/src/domain/service.ts",
+      code: "interface Handler { handle(): void } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
+    },
+    {
       name: "qualified imported port aliases remain unresolved rather than empty",
       code: "import type * as contracts from './contracts'; type Handler = contracts.Handler; export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }",
     },
     {
       name: "callable port aliases retain their capability across local aliases",
       code: "type Run = Fn; type Fn = () => void; interface Handler { handle: Run } export class RequestHandler implements Handler { constructor(private readonly store: TaskStore) {} handle() { this.store.handle(); } }",
-    },
-    {
-      name: "locally shadowed constructor names do not prove retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a parameter property replaced with a constructed value is not injection",
-      code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a later global store replaces retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.store = fixedStore; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a parameter property replaced with a global value is not injection",
-      code: "export class RequestHandler { constructor(private store: TaskStore) { this.store = fixedStore; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a conditional store does not prove retained injection",
-      code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore, enabled: boolean) { if (enabled) this.store = store; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "logical assignment does not prove which collaborator is retained",
-      code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore) { this.store ??= store; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "nested replacement invalidates the earlier direct store",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.other = (this.store = fixedStore); } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "an object-pattern target replaces retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store } = { store: fixedStore }); } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "an array-pattern target replaces a parameter property",
-      code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store] = [fixedStore]; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "an erased wrapper remains a pattern write target",
-      code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store as TaskStore] = [fixedStore]; } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "an assignment-pattern left replaces retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store = fixedStore } = {}); } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "an object rest target replaces retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ ...this.store } = fixedStore); } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a direct for-of target replaces retained injection",
-      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; for (this.store of stores) {} } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a nested for-of pattern replaces a parameter property",
-      code: "export class RequestHandler { constructor(private store: TaskStore) { for ({ store: this.store } of stores) {} } handle() { this.store.handle(); } }",
-    },
-    {
-      name: "a for-in target invalidates retained injection",
-      code: "export class RequestHandler { private store: TaskStore | string; constructor(store: TaskStore) { this.store = store; for (this.store in values) {} } handle() { if (typeof this.store !== 'string') this.store.handle(); } }",
-    },
-    {
-      name: "conditional nullable storage remains unresolved",
-      filename: SRC,
-      code: "export class RequestHandler { private readonly store: TaskStore; constructor(store: TaskStore | undefined, enabled: boolean) { if (enabled) this.store = store!; else this.store = fallbackStore(); } handle() { this.store.handle(); } }",
     },
     {
       name: "quoted callable keys match equivalent interface keys",
@@ -149,26 +88,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       name: "accepts the documented service port",
       filename: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].focusPath,
       code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[0].files[0].source,
-    },
-    {
-      name: "treats a retained metadata record read through fields as constructor data",
-      filename: SRC,
-      code: `
-        export class SessionPresenter {
-          constructor(private readonly metadata: SessionMetadata) {}
-          sessionId(): string { return this.metadata.sessionId; }
-        }
-      `,
-    },
-    {
-      name: "treats passing a retained metadata record as data flow rather than collaborator behavior",
-      filename: SRC,
-      code: `
-        export class SessionPublisher {
-          constructor(private readonly metadata: SessionMetadata) {}
-          publish(): void { publishSession(this.metadata, this.metadata.sessionId); }
-        }
-      `,
     },
     {
       name: "combines segregated implemented port surfaces",
@@ -234,18 +153,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    {
-      name: "recognizes a transitively inherited local abstract port",
-      filename: SRC,
-      code: `
-        abstract class BasePort { abstract handle(): void; }
-        class SpecializedPort extends BasePort { handle(): void {} }
-        export class RequestHandler extends SpecializedPort {
-          constructor(private readonly store: TaskStore) { super(); }
-          handle(): void {}
-        }
-      `,
-    },
 
     {
       filename: SRC,
@@ -254,17 +161,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
           private readonly svc: ServiceRegistry;
           constructor(svc: ServiceRegistry) { this.svc = svc; }
           async run(): Promise<void> {}
-        }
-      `,
-    },
-    {
-      name: "keeps arbitrary framework-decorated classes conservative",
-      filename: SRC,
-      code: `
-        @sealed
-        export class RequestHandler {
-          constructor(private readonly store: TaskStore) {}
-          handle(): void {}
         }
       `,
     },
@@ -291,100 +187,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    {
-      name: "ignores a declared class whose constructor has no implementation",
-      filename: SRC,
-      code: `
-        export declare class ExternalTaskService {
-          constructor(store: TaskStore);
-          run(): void;
-        }
-      `,
-    },
-    {
-      name: "ignores an injected Babel NodePath navigation value",
-      filename: SRC,
-      code: `
-        export class ProgramContext {
-          constructor(private readonly program: NodePath<Program>) {}
-          hasReference(name: string): boolean { return this.program.scope.hasReference(name); }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class SyncWorkflow extends WorkflowEntrypoint {
-          private readonly store: TaskStore;
-          constructor(store: TaskStore) { super(); this.store = store; }
-          async run(): Promise<void> {}
-        }
-      `,
-    },
-    {
-      filename: SRC,
-      code: `
-        export class ApiError extends Error {
-          private readonly cause2: HttpResponse;
-          constructor(cause2: HttpResponse) { super("boom"); this.cause2 = cause2; }
-          describe(): string { return "err"; }
-        }
-      `,
-    },
-    {
-      name: "ignores error-value classes that do not extend the built-in Error",
-      filename: SRC,
-      code: `
-        export class BrandError {
-          constructor(readonly issue: SchemaIssue) {}
-          toString(): string { return this.issue.toString(); }
-        }
-      `,
-    },
-    {
-      name: "ignores immutable fluent values whose operations return the same value type",
-      filename: SRC,
-      code: `
-        export class Transformation<T> {
-          constructor(readonly decode: Decoder<T>, readonly encode: Encoder<T>) {}
-          flip(): Transformation<T> { return new Transformation(this.decode, this.encode); }
-          compose(other: Transformation<T>): Transformation<T> { return other; }
-        }
-      `,
-    },
-    {
-      filename: "/repo/src/components/boundary.tsx",
-      code: `
-        export default class WidgetErrorBoundary extends React.Component<Props, State> {
-          private readonly reporter: ErrorReporter;
-          constructor(reporter: ErrorReporter) { super(reporter); this.reporter = reporter; }
-          render(): JSX.Element { return null as never; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        @Injectable()
-        export class CatsService {
-          private readonly repo: CatRepository;
-          constructor(repo: CatRepository) { this.repo = repo; }
-          findAll(): Promise<Cat[]> { return this.repo.all(); }
-        }
-      `,
-    },
-    {
-      name: "ignores an anonymous default class because no interface name can be suggested",
-      filename: SRC,
-      code: `
-        export default class {
-          constructor(private readonly store: TaskStore) {}
-          run(): void {}
-        }
-      `,
-    },
 
     {
       filename: SRC,
@@ -406,28 +208,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
         }
       `,
     },
-    {
-      name: "fluent construction builders expose their chainable API directly rather than a service port",
-      filename: SRC,
-      code: `
-        export class QueryBuilder {
-          constructor(private readonly dialect: QueryDialect) {}
-          select(): SelectQuery { return null as never; }
-          where(): QueryBuilder { return this; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Money {
-          private readonly amount: Decimal;
-          constructor(amount: Decimal) { this.amount = amount; }
-          get value(): Decimal { return this.amount; }
-        }
-      `,
-    },
 
     {
       filename: SRC,
@@ -439,130 +219,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
           protected other(): void {}
           static make(): void {}
           #secret(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Schemas {
-          static readonly Candidate = z.object({});
-          parse(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Cursor {
-          private readonly token: string;
-          private readonly limit: number;
-          constructor(token: string, limit: number) { this.token = token; this.limit = limit; }
-          encode(): string { return this.token; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class JsonHttpClient {
-          private readonly options: JsonHttpClientOptions;
-          constructor(options: JsonHttpClientOptions) { this.options = options; }
-          async requestJson(): Promise<unknown> { return null; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Runner {
-          private readonly tuning: RunnerSettings;
-          constructor(tuning: RunnerSettings) { this.tuning = tuning; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class RealtimeSessionManager {
-          constructor(private readonly callbacks: RealtimeSessionCallbacks) {}
-          async connect(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Reporter {
-          private readonly logger: Logger;
-          constructor(logger: Logger) { this.logger = logger; }
-          report(): void {}
-        }
-      `,
-    },
-    {
-      filename: SRC,
-      code: `
-        export class Ticker {
-          constructor(private readonly clock: Clock) {}
-          tick(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class ServiceFactory {
-          private readonly sessions: ISessionService;
-          private readonly chats: IChatStore;
-          private readonly cases: ICaseService;
-          constructor(private readonly db: Database) {
-            this.sessions = new SessionService(this.db);
-            this.chats = new ChatStore(this.db);
-            this.cases = new CaseService(this.db);
-          }
-          session(): ISessionService { return this.sessions; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Inline {
-          private readonly bag: { a: string };
-          constructor(bag: { a: string }) { this.bag = bag; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Enqueuer {
-          private readonly enqueue: (task: TaskMessage) => Promise<void>;
-          constructor(enqueue: (task: TaskMessage) => Promise<void>) { this.enqueue = enqueue; }
-          async send(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Eager {
-          private readonly rows: number;
-          constructor(store: TaskStore) { this.rows = store.count(); }
-          run(): void {}
         }
       `,
     },
@@ -581,16 +237,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
       filename: "/repo/src/domain/service.stories.ts",
       code: `
         export class StoryHarness {
-          private readonly svc: ServiceRegistry;
-          constructor(svc: ServiceRegistry) { this.svc = svc; }
-          run(): void {}
-        }
-      `,
-    },
-    {
-      filename: "/repo/scripts/backfill.ts",
-      code: `
-        export class Backfiller {
           private readonly svc: ServiceRegistry;
           constructor(svc: ServiceRegistry) { this.svc = svc; }
           run(): void {}
@@ -620,260 +266,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
     },
 
     {
-      filename: "/repo/src/router.ts",
-      code: `
-        export class MainRouter {
-          constructor(
-            private readonly taskStore: TaskStore,
-            private readonly taskExecutor: TaskExecutor,
-          ) {}
-          init() {
-            const router = express.Router();
-            router.post("/", async (req, res) => {
-              await this.taskExecutor.execute(await this.taskStore.setToInProgress(req.body.id));
-            });
-            return router;
-          }
-        }
-      `,
-    },
-
-    {
-      filename: "/repo/src/router.ts",
-      code: `
-        export class MainRouter {
-          constructor(private readonly taskStore: TaskStore) {}
-          init() {
-            const router = Router();
-            router.get("/", () => this.taskStore.list());
-            return router;
-          }
-        }
-      `,
-    },
-
-    {
-      filename: "/repo/src/webhook.ts",
-      code: `
-        export class WebhookController {
-          constructor(private readonly taskStore: TaskStore) {}
-          handle(req: express.Request, res: express.Response): void {
-            void this.taskStore.record(req.body);
-            res.status(204).send();
-          }
-        }
-      `,
-    },
-
-    {
-      filename: "/repo/src/lib/http-client.ts",
-      code: `
-        export class LedgerHttpClient {
-          constructor(private readonly client: KyInstance) {}
-          async inbound(input: LedgerCallInput): Promise<ConnectionDetails> {
-            return null as never;
-          }
-        }
-      `,
-    },
-    {
-      filename: "/repo/src/lib/http-client.ts",
-      code: `
-        export class ApiClient {
-          constructor(private readonly http: AxiosInstance) {}
-          async listJobs(): Promise<Job[]> { return []; }
-        }
-      `,
-    },
-    {
-      filename: "/repo/src/lib/http-client.ts",
-      code: `
-        export class WarehouseClient {
-          constructor(private readonly session: Session) {}
-          async query(sql: string): Promise<Row[]> { return []; }
-        }
-      `,
-    },
-    {
-      name: "ignores a thin Http-prefixed wrapper over one third-party transport",
-      filename: "/repo/src/lib/http-service.ts",
-      code: `
-        export class HttpThingService {
-          constructor(private readonly client: AxiosInstance) {}
-          async call(body: unknown): Promise<unknown> { return this.client.post("/x", body); }
-        }
-      `,
-    },
-    {
-      name: "ignores a thin transport wrapper despite a nearby interface",
-      filename: "/repo/src/app/api/parser.ts",
-      code: `
-        export interface Parser { parse(args: ParseArgs): Promise<Parsed>; }
-        export class ParserImpl {
-          constructor(readonly axios: AxiosInstance) {}
-          async parse(args: ParseArgs): Promise<Parsed> { return null as never; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { userRepo: UserRepo; syncClient: SyncClient; }
-        export class OrgSyncService {
-          private readonly count: number;
-          constructor({ userRepo, syncClient }: OrgSyncDeps) {
-            this.count = userRepo.count() + syncClient.count();
-          }
-          async sync(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface HttpClientOptions { retries: number; timeoutMs: number; }
-        export class HttpClient {
-          private readonly retries: number;
-          private readonly timeoutMs: number;
-          constructor({ retries, timeoutMs }: HttpClientOptions) {
-            this.retries = retries;
-            this.timeoutMs = timeoutMs;
-          }
-          async get(url: string): Promise<Response> { return null as never; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface ReporterDeps { logger: Logger; config: ReporterConfig; }
-        export class Reporter {
-          private readonly logger: Logger;
-          private readonly config: ReporterConfig;
-          constructor({ logger, config }: ReporterDeps) {
-            this.logger = logger;
-            this.config = config;
-          }
-          report(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
-        export class RenamedLocal {
-          private readonly logger: AppLogger;
-          constructor({ appLogger: logger }: RenamedDeps) { this.logger = logger; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
-        export class RenamedKey {
-          private readonly appLogger: AppLogger;
-          constructor({ logger: appLogger }: RenamedDeps) { this.appLogger = appLogger; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Cursor {
-          private readonly token: string;
-          private readonly limit: number;
-          constructor({ token, limit }: { token: string; limit: number }) {
-            this.token = token;
-            this.limit = limit;
-          }
-          encode(): string { return this.token; }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { userRepo: UserRepo; }
-        export class RestOnly {
-          private readonly rest: unknown;
-          constructor({ ...rest }: OrgSyncDeps) { this.rest = rest; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { nested: NestedBag; }
-        export class NestedOnly {
-          private readonly inner: Inner;
-          constructor({ nested: { inner } }: OrgSyncDeps) { this.inner = inner; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { KEY: UserRepo; userRepo: UserRepo; }
-        export class ComputedKey {
-          private readonly value: UserRepo;
-          constructor({ [KEY]: value }: OrgSyncDeps) { this.value = value; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { userRepo: UserRepo; }
-        export class StringKey {
-          private readonly userRepo: UserRepo;
-          constructor({ "user-repo": userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class Untyped {
-          private readonly userRepo: UserRepo;
-          constructor({ userRepo }) { this.userRepo = userRepo; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface OrgSyncDeps { userRepo: UserRepo; }
-        interface LegacyDeps { userRepo: UserRepo; }
-        export class UnionBag {
-          private readonly userRepo: UserRepo;
-          constructor({ userRepo }: OrgSyncDeps | LegacyDeps) { this.userRepo = userRepo; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
       filename: SRC,
       code: `
         interface OrgSyncDeps { userRepo: UserRepo; }
@@ -881,141 +273,6 @@ RULE_TESTER.run("require-port-for-service", rule, {
           private readonly userRepo: UserRepo;
           constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
           async sync(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class TreeNode<T> {
-          public readonly value: T;
-          constructor({ value }: { value: T; parent: TreeNode<T> | null }) { this.value = value; }
-          addChild(child: TreeNode<T>): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface FormDeps { formState: Record<string, unknown>; columnsById: Map<string, Column>; }
-        export class FormFilters {
-          private readonly formState: Record<string, unknown>;
-          private readonly columnsById: Map<string, Column>;
-          constructor({ formState, columnsById }: FormDeps) {
-            this.formState = formState;
-            this.columnsById = columnsById;
-          }
-          apply(): void {}
-        }
-      `,
-    },
-    {
-      filename: SRC,
-      code: `
-        export class RowCache {
-          private readonly rows: Map<string, Row>;
-          constructor(rows: Map<string, Row>) { this.rows = rows; }
-          get(id: string): Row | undefined { return this.rows.get(id); }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        type HandlerType = (timer: Timer) => Promise<void>;
-        export class Timer {
-          private readonly handler: HandlerType;
-          constructor({ handler }: { handler: HandlerType; time: number }) { this.handler = handler; }
-          start(): void {}
-        }
-      `,
-    },
-    {
-      filename: SRC,
-      code: `
-        type SetState = (s: State) => void;
-        export class Store {
-          private readonly setState: SetState;
-          constructor(setState: SetState) { this.setState = setState; }
-          update(s: State): void { this.setState(s); }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        import type { OrgSyncDeps } from "./deps.js";
-        export class OrgSyncService {
-          private readonly userRepo: UserRepo;
-          constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
-          async sync(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        export class CatalogFacade {
-          private readonly client: catalog.Client;
-          constructor({ client }: catalog.Deps) { this.client = client; }
-          lookup(id: string): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        type LooseDeps = Record<string, unknown>;
-        export class LooseService {
-          private readonly userRepo: UserRepo;
-          constructor({ userRepo }: LooseDeps) { this.userRepo = userRepo; }
-          async run(): Promise<void> {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface UpstreamDeps { setState: (s: State) => void; getState: () => State; }
-        export class Store {
-          private readonly setState: (s: State) => void;
-          private readonly getState: () => State;
-          constructor({ setState, getState }: UpstreamDeps) {
-            this.setState = setState;
-            this.getState = getState;
-          }
-          update(s: State): void { this.setState(s); }
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface RunnerDeps { tuning: RunnerSettings; }
-        export class Runner {
-          private readonly tuning: RunnerSettings;
-          constructor({ tuning }: RunnerDeps) { this.tuning = tuning; }
-          run(): void {}
-        }
-      `,
-    },
-
-    {
-      filename: SRC,
-      code: `
-        interface PartialDeps { userRepo: UserRepo; retries: number; }
-        export class PartialService {
-          private readonly retries: number;
-          constructor({ retries }: PartialDeps) { this.retries = retries; }
-          run(): void {}
         }
       `,
     },
@@ -1034,34 +291,909 @@ RULE_TESTER.run("require-port-for-service", rule, {
 
   invalid: [
     {
+      filename: "/repo/src/domain/service.ts",
+      code: "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
+      errors: [
+        { messageId: "requireInterface", data: { name: "RequestHandler", deps: "store: TaskStore", methods: "handle" }, line: 1, column: 14 },
+        { messageId: "requireContract", data: { name: "RequestHandler" }, line: 1, column: 14 },
+      ],
+    },
+    {
+      filename: "/repo/scripts/backfill.ts",
+      code: "export class RequestHandler { constructor(private readonly store: TaskStore) {} handle(): void { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+    {
+      name: "locally shadowed constructor names do not prove retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { { const store = new TaskStore(); this.store = store; } } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a parameter property replaced with a constructed value is not injection",
+      code: "export class RequestHandler { constructor(private readonly store: TaskStore) { this.store = new TaskStore(); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a later global store replaces retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.store = fixedStore; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a parameter property replaced with a global value is not injection",
+      code: "export class RequestHandler { constructor(private store: TaskStore) { this.store = fixedStore; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a conditional store does not prove retained injection",
+      code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore, enabled: boolean) { if (enabled) this.store = store; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "logical assignment does not prove which collaborator is retained",
+      code: "export class RequestHandler { private store = fixedStore; constructor(store: TaskStore) { this.store ??= store; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "nested replacement invalidates the earlier direct store",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; this.other = (this.store = fixedStore); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "an object-pattern target replaces retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store } = { store: fixedStore }); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "an array-pattern target replaces a parameter property",
+      code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store] = [fixedStore]; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "an erased wrapper remains a pattern write target",
+      code: "export class RequestHandler { constructor(private store: TaskStore) { [this.store as TaskStore] = [fixedStore]; } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "an assignment-pattern left replaces retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ store: this.store = fixedStore } = {}); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "an object rest target replaces retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; ({ ...this.store } = fixedStore); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a direct for-of target replaces retained injection",
+      code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; for (this.store of stores) {} } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a nested for-of pattern replaces a parameter property",
+      code: "export class RequestHandler { constructor(private store: TaskStore) { for ({ store: this.store } of stores) {} } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "a for-in target invalidates retained injection",
+      code: "export class RequestHandler { private store: TaskStore | string; constructor(store: TaskStore) { this.store = store; for (this.store in values) {} } handle() { if (typeof this.store !== 'string') this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "conditional nullable storage remains unresolved",
+      filename: SRC,
+      code: "export class RequestHandler { private readonly store: TaskStore; constructor(store: TaskStore | undefined, enabled: boolean) { if (enabled) this.store = store!; else this.store = fallbackStore(); } handle() { this.store.handle(); } }",
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "treats a retained metadata record read through fields as constructor data",
+      filename: SRC,
+      code: `
+        export class SessionPresenter {
+          constructor(private readonly metadata: SessionMetadata) {}
+          sessionId(): string { return this.metadata.sessionId; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "SessionPresenter" } }],
+    },
+
+    {
+      name: "treats passing a retained metadata record as data flow rather than collaborator behavior",
+      filename: SRC,
+      code: `
+        export class SessionPublisher {
+          constructor(private readonly metadata: SessionMetadata) {}
+          publish(): void { publishSession(this.metadata, this.metadata.sessionId); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "SessionPublisher" } }],
+    },
+
+    {
+      name: "recognizes a transitively inherited local abstract port",
+      filename: SRC,
+      code: `
+        abstract class BasePort { abstract handle(): void; }
+        class SpecializedPort extends BasePort { handle(): void {} }
+        export class RequestHandler extends SpecializedPort {
+          constructor(private readonly store: TaskStore) { super(); }
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "keeps arbitrary framework-decorated classes conservative",
+      filename: SRC,
+      code: `
+        @sealed
+        export class RequestHandler {
+          constructor(private readonly store: TaskStore) {}
+          handle(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RequestHandler" } }],
+    },
+
+    {
+      name: "ignores a declared class whose constructor has no implementation",
+      filename: SRC,
+      code: `
+        export declare class ExternalTaskService {
+          constructor(store: TaskStore);
+          run(): void;
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ExternalTaskService" } }],
+    },
+
+    {
+      name: "ignores an injected Babel NodePath navigation value",
+      filename: SRC,
+      code: `
+        export class ProgramContext {
+          constructor(private readonly program: NodePath<Program>) {}
+          hasReference(name: string): boolean { return this.program.scope.hasReference(name); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ProgramContext" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class SyncWorkflow extends WorkflowEntrypoint {
+          private readonly store: TaskStore;
+          constructor(store: TaskStore) { super(); this.store = store; }
+          async run(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "SyncWorkflow" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class ApiError extends Error {
+          private readonly cause2: HttpResponse;
+          constructor(cause2: HttpResponse) { super("boom"); this.cause2 = cause2; }
+          describe(): string { return "err"; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ApiError" } }],
+    },
+
+    {
+      name: "ignores error-value classes that do not extend the built-in Error",
+      filename: SRC,
+      code: `
+        export class BrandError {
+          constructor(readonly issue: SchemaIssue) {}
+          toString(): string { return this.issue.toString(); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "BrandError" } }],
+    },
+
+    {
+      name: "ignores immutable fluent values whose operations return the same value type",
+      filename: SRC,
+      code: `
+        export class Transformation<T> {
+          constructor(readonly decode: Decoder<T>, readonly encode: Encoder<T>) {}
+          flip(): Transformation<T> { return new Transformation(this.decode, this.encode); }
+          compose(other: Transformation<T>): Transformation<T> { return other; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Transformation" } }],
+    },
+
+    {
+      filename: "/repo/src/components/boundary.tsx",
+      code: `
+        export default class WidgetErrorBoundary extends React.Component<Props, State> {
+          private readonly reporter: ErrorReporter;
+          constructor(reporter: ErrorReporter) { super(reporter); this.reporter = reporter; }
+          render(): JSX.Element { return null as never; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "WidgetErrorBoundary" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        @Injectable()
+        export class CatsService {
+          private readonly repo: CatRepository;
+          constructor(repo: CatRepository) { this.repo = repo; }
+          findAll(): Promise<Cat[]> { return this.repo.all(); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "CatsService" } }],
+    },
+
+    {
+      name: "ignores an anonymous default class because no interface name can be suggested",
+      filename: SRC,
+      code: `
+        export default class {
+          constructor(private readonly store: TaskStore) {}
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "default" } }],
+    },
+
+    {
+      name: "fluent construction builders expose their chainable API directly rather than a service port",
+      filename: SRC,
+      code: `
+        export class QueryBuilder {
+          constructor(private readonly dialect: QueryDialect) {}
+          select(): SelectQuery { return null as never; }
+          where(): QueryBuilder { return this; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "QueryBuilder" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Money {
+          private readonly amount: Decimal;
+          constructor(amount: Decimal) { this.amount = amount; }
+          get value(): Decimal { return this.amount; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Money" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Schemas {
+          static readonly Candidate = z.object({});
+          parse(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Schemas" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Cursor {
+          private readonly token: string;
+          private readonly limit: number;
+          constructor(token: string, limit: number) { this.token = token; this.limit = limit; }
+          encode(): string { return this.token; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Cursor" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class JsonHttpClient {
+          private readonly options: JsonHttpClientOptions;
+          constructor(options: JsonHttpClientOptions) { this.options = options; }
+          async requestJson(): Promise<unknown> { return null; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "JsonHttpClient" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Runner {
+          private readonly tuning: RunnerSettings;
+          constructor(tuning: RunnerSettings) { this.tuning = tuning; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Runner" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class RealtimeSessionManager {
+          constructor(private readonly callbacks: RealtimeSessionCallbacks) {}
+          async connect(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RealtimeSessionManager" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Reporter {
+          private readonly logger: Logger;
+          constructor(logger: Logger) { this.logger = logger; }
+          report(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Reporter" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Ticker {
+          constructor(private readonly clock: Clock) {}
+          tick(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Ticker" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class ServiceFactory {
+          private readonly sessions: ISessionService;
+          private readonly chats: IChatStore;
+          private readonly cases: ICaseService;
+          constructor(private readonly db: Database) {
+            this.sessions = new SessionService(this.db);
+            this.chats = new ChatStore(this.db);
+            this.cases = new CaseService(this.db);
+          }
+          session(): ISessionService { return this.sessions; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ServiceFactory" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Inline {
+          private readonly bag: { a: string };
+          constructor(bag: { a: string }) { this.bag = bag; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Inline" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Enqueuer {
+          private readonly enqueue: (task: TaskMessage) => Promise<void>;
+          constructor(enqueue: (task: TaskMessage) => Promise<void>) { this.enqueue = enqueue; }
+          async send(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Enqueuer" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Eager {
+          private readonly rows: number;
+          constructor(store: TaskStore) { this.rows = store.count(); }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Eager" } }],
+    },
+
+    {
+      filename: "/repo/scripts/backfill.ts",
+      code: `
+        export class Backfiller {
+          private readonly svc: ServiceRegistry;
+          constructor(svc: ServiceRegistry) { this.svc = svc; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Backfiller" } }],
+    },
+
+    {
+      filename: "/repo/src/router.ts",
+      code: `
+        export class MainRouter {
+          constructor(
+            private readonly taskStore: TaskStore,
+            private readonly taskExecutor: TaskExecutor,
+          ) {}
+          init() {
+            const router = express.Router();
+            router.post("/", async (req, res) => {
+              await this.taskExecutor.execute(await this.taskStore.setToInProgress(req.body.id));
+            });
+            return router;
+          }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "MainRouter" } }],
+    },
+
+    {
+      filename: "/repo/src/router.ts",
+      code: `
+        export class MainRouter {
+          constructor(private readonly taskStore: TaskStore) {}
+          init() {
+            const router = Router();
+            router.get("/", () => this.taskStore.list());
+            return router;
+          }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "MainRouter" } }],
+    },
+
+    {
+      filename: "/repo/src/webhook.ts",
+      code: `
+        export class WebhookController {
+          constructor(private readonly taskStore: TaskStore) {}
+          handle(req: express.Request, res: express.Response): void {
+            void this.taskStore.record(req.body);
+            res.status(204).send();
+          }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "WebhookController" } }],
+    },
+
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class LedgerHttpClient {
+          constructor(private readonly client: KyInstance) {}
+          async inbound(input: LedgerCallInput): Promise<ConnectionDetails> {
+            return null as never;
+          }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "LedgerHttpClient" } }],
+    },
+
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class ApiClient {
+          constructor(private readonly http: AxiosInstance) {}
+          async listJobs(): Promise<Job[]> { return []; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ApiClient" } }],
+    },
+
+    {
+      filename: "/repo/src/lib/http-client.ts",
+      code: `
+        export class WarehouseClient {
+          constructor(private readonly session: Session) {}
+          async query(sql: string): Promise<Row[]> { return []; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "WarehouseClient" } }],
+    },
+
+    {
+      name: "ignores a thin Http-prefixed wrapper over one third-party transport",
+      filename: "/repo/src/lib/http-service.ts",
+      code: `
+        export class HttpThingService {
+          constructor(private readonly client: AxiosInstance) {}
+          async call(body: unknown): Promise<unknown> { return this.client.post("/x", body); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "HttpThingService" } }],
+    },
+
+    {
+      name: "ignores a thin transport wrapper despite a nearby interface",
+      filename: "/repo/src/app/api/parser.ts",
+      code: `
+        export interface Parser { parse(args: ParseArgs): Promise<Parsed>; }
+        export class ParserImpl {
+          constructor(readonly axios: AxiosInstance) {}
+          async parse(args: ParseArgs): Promise<Parsed> { return null as never; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ParserImpl" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; syncClient: SyncClient; }
+        export class OrgSyncService {
+          private readonly count: number;
+          constructor({ userRepo, syncClient }: OrgSyncDeps) {
+            this.count = userRepo.count() + syncClient.count();
+          }
+          async sync(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "OrgSyncService" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface HttpClientOptions { retries: number; timeoutMs: number; }
+        export class HttpClient {
+          private readonly retries: number;
+          private readonly timeoutMs: number;
+          constructor({ retries, timeoutMs }: HttpClientOptions) {
+            this.retries = retries;
+            this.timeoutMs = timeoutMs;
+          }
+          async get(url: string): Promise<Response> { return null as never; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "HttpClient" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface ReporterDeps { logger: Logger; config: ReporterConfig; }
+        export class Reporter {
+          private readonly logger: Logger;
+          private readonly config: ReporterConfig;
+          constructor({ logger, config }: ReporterDeps) {
+            this.logger = logger;
+            this.config = config;
+          }
+          report(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Reporter" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
+        export class RenamedLocal {
+          private readonly logger: AppLogger;
+          constructor({ appLogger: logger }: RenamedDeps) { this.logger = logger; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RenamedLocal" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface RenamedDeps { appLogger: AppLogger; logger: AppLogger; }
+        export class RenamedKey {
+          private readonly appLogger: AppLogger;
+          constructor({ logger: appLogger }: RenamedDeps) { this.appLogger = appLogger; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RenamedKey" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Cursor {
+          private readonly token: string;
+          private readonly limit: number;
+          constructor({ token, limit }: { token: string; limit: number }) {
+            this.token = token;
+            this.limit = limit;
+          }
+          encode(): string { return this.token; }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Cursor" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class RestOnly {
+          private readonly rest: unknown;
+          constructor({ ...rest }: OrgSyncDeps) { this.rest = rest; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RestOnly" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { nested: NestedBag; }
+        export class NestedOnly {
+          private readonly inner: Inner;
+          constructor({ nested: { inner } }: OrgSyncDeps) { this.inner = inner; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "NestedOnly" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { KEY: UserRepo; userRepo: UserRepo; }
+        export class ComputedKey {
+          private readonly value: UserRepo;
+          constructor({ [KEY]: value }: OrgSyncDeps) { this.value = value; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "ComputedKey" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        export class StringKey {
+          private readonly userRepo: UserRepo;
+          constructor({ "user-repo": userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "StringKey" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class Untyped {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Untyped" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface OrgSyncDeps { userRepo: UserRepo; }
+        interface LegacyDeps { userRepo: UserRepo; }
+        export class UnionBag {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps | LegacyDeps) { this.userRepo = userRepo; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "UnionBag" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class TreeNode<T> {
+          public readonly value: T;
+          constructor({ value }: { value: T; parent: TreeNode<T> | null }) { this.value = value; }
+          addChild(child: TreeNode<T>): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "TreeNode" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface FormDeps { formState: Record<string, unknown>; columnsById: Map<string, Column>; }
+        export class FormFilters {
+          private readonly formState: Record<string, unknown>;
+          private readonly columnsById: Map<string, Column>;
+          constructor({ formState, columnsById }: FormDeps) {
+            this.formState = formState;
+            this.columnsById = columnsById;
+          }
+          apply(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "FormFilters" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class RowCache {
+          private readonly rows: Map<string, Row>;
+          constructor(rows: Map<string, Row>) { this.rows = rows; }
+          get(id: string): Row | undefined { return this.rows.get(id); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "RowCache" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        type HandlerType = (timer: Timer) => Promise<void>;
+        export class Timer {
+          private readonly handler: HandlerType;
+          constructor({ handler }: { handler: HandlerType; time: number }) { this.handler = handler; }
+          start(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Timer" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        type SetState = (s: State) => void;
+        export class Store {
+          private readonly setState: SetState;
+          constructor(setState: SetState) { this.setState = setState; }
+          update(s: State): void { this.setState(s); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Store" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        import type { OrgSyncDeps } from "./deps.js";
+        export class OrgSyncService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: OrgSyncDeps) { this.userRepo = userRepo; }
+          async sync(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "OrgSyncService" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        export class CatalogFacade {
+          private readonly client: catalog.Client;
+          constructor({ client }: catalog.Deps) { this.client = client; }
+          lookup(id: string): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "CatalogFacade" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        type LooseDeps = Record<string, unknown>;
+        export class LooseService {
+          private readonly userRepo: UserRepo;
+          constructor({ userRepo }: LooseDeps) { this.userRepo = userRepo; }
+          async run(): Promise<void> {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "LooseService" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface UpstreamDeps { setState: (s: State) => void; getState: () => State; }
+        export class Store {
+          private readonly setState: (s: State) => void;
+          private readonly getState: () => State;
+          constructor({ setState, getState }: UpstreamDeps) {
+            this.setState = setState;
+            this.getState = getState;
+          }
+          update(s: State): void { this.setState(s); }
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Store" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface RunnerDeps { tuning: RunnerSettings; }
+        export class Runner {
+          private readonly tuning: RunnerSettings;
+          constructor({ tuning }: RunnerDeps) { this.tuning = tuning; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "Runner" } }],
+    },
+
+    {
+      filename: SRC,
+      code: `
+        interface PartialDeps { userRepo: UserRepo; retries: number; }
+        export class PartialService {
+          private readonly retries: number;
+          constructor({ retries }: PartialDeps) { this.retries = retries; }
+          run(): void {}
+        }
+      `,
+      errors: [{ messageId: "requireContract", data: { name: "PartialService" } }],
+    },
+
+    {
       name: "reuses the existing direct factory return contract",
       filename: "src/service.ts",
       code: REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[2].files[0].source,
       output:
         REQUIRE_PORT_FOR_SERVICE_DOCUMENTATION.examples[2].fixedFiles[0].source,
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "Service" } },],
     },
 
     {
       name: "a computed pattern key only reads the retained store",
       code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; let value; ({ [this.store]: value } = values); } handle() { this.store.handle(); } }",
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },],
     },
     {
       name: "a pattern default RHS only reads the retained store",
       code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; let value; ({ value = this.store } = {}); } handle() { this.store.handle(); } }",
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },],
     },
     {
       name: "loop declarations and defaults only read retained injection",
       code: "export class RequestHandler { private store: TaskStore; constructor(store: TaskStore) { this.store = store; for (const { value = this.store } of [{}]) {} } handle() { this.store.handle(); } }",
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },],
     },
     {
       name: "a same-stem interface does not replace an implements clause",
       filename: SRC,
       code: "interface WorkerService { run(): void } export class WorkerServiceImpl { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }",
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "WorkerServiceImpl" } },],
     },
     {
       name: "different quoted method names do not establish a port",
@@ -1081,6 +1213,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
     {
@@ -1104,6 +1237,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
     {
@@ -1129,6 +1263,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "load",
           },
         },
+        { messageId: "requireContract", data: { name: "SessionConfigService" } },
       ],
     },
     {
@@ -1150,6 +1285,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "load",
           },
         },
+        { messageId: "requireContract", data: { name: "OptionalConfigService" } },
       ],
     },
     {
@@ -1170,6 +1306,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "build",
           },
         },
+        { messageId: "requireContract", data: { name: "ReportBuilder" } },
       ],
     },
     {
@@ -1233,6 +1370,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
     {
@@ -1276,12 +1414,14 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
     {
       name: "a direct nullable store retains its unwrapped collaborator",
       code: "export class RequestHandler { private readonly store: TaskStore; constructor(store: TaskStore | undefined) { this.store = store!; } handle() { this.store.handle(); } }",
-      errors: [{ messageId: "requireInterface" }],
+      errors: [{ messageId: "requireInterface" },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },],
     },
     {
       name: "counts public arrow properties as callable service surface",
@@ -1301,6 +1441,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
     {
@@ -1322,6 +1463,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "RequestHandler" } },
       ],
     },
 
@@ -1350,6 +1492,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "run",
           },
         },
+        { messageId: "requireContract", data: { name: "RecordNormalizerService" } },
       ],
     },
 
@@ -1371,6 +1514,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "getProfileById, listProfiles",
           },
         },
+        { messageId: "requireContract", data: { name: "ProfileService" } },
       ],
     },
 
@@ -1393,6 +1537,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "parse, warmUp",
           },
         },
+        { messageId: "requireContract", data: { name: "ReportParserImpl" } },
       ],
     },
 
@@ -1421,6 +1566,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "runDaily",
           },
         },
+        { messageId: "requireContract", data: { name: "DigestReportService" } },
       ],
     },
 
@@ -1451,6 +1597,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "ArtifactSyncHandler" } },
       ],
     },
 
@@ -1472,6 +1619,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "lookup",
           },
         },
+        { messageId: "requireContract", data: { name: "CatalogFacade" } },
       ],
     },
 
@@ -1493,6 +1641,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "process",
           },
         },
+        { messageId: "requireContract", data: { name: "TaskProcessor" } },
       ],
     },
 
@@ -1517,6 +1666,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "schedule",
           },
         },
+        { messageId: "requireContract", data: { name: "Scheduler" } },
       ],
     },
 
@@ -1542,6 +1692,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "TaskMessageHandler" } },
       ],
     },
 
@@ -1563,6 +1714,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "select",
           },
         },
+        { messageId: "requireContract", data: { name: "PanelPresenter" } },
       ],
     },
 
@@ -1588,6 +1740,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "init",
           },
         },
+        { messageId: "requireContract", data: { name: "MainRouter" } },
       ],
     },
 
@@ -1610,6 +1763,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "fetch",
           },
         },
+        { messageId: "requireContract", data: { name: "FetchHandler" } },
       ],
     },
 
@@ -1631,6 +1785,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "send",
           },
         },
+        { messageId: "requireContract", data: { name: "HttpMessageService" } },
       ],
     },
 
@@ -1655,6 +1810,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "parse, warmUp",
           },
         },
+        { messageId: "requireContract", data: { name: "ReportParserImpl" } },
       ],
     },
 
@@ -1679,6 +1835,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "listJobs, warmUp",
           },
         },
+        { messageId: "requireContract", data: { name: "ApiClient" } },
       ],
     },
 
@@ -1705,6 +1862,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "listJobs",
           },
         },
+        { messageId: "requireContract", data: { name: "ApiClient" } },
       ],
     },
 
@@ -1725,6 +1883,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "listJobs",
           },
         },
+        { messageId: "requireContract", data: { name: "ApiClient" } },
       ],
     },
 
@@ -1754,6 +1913,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1784,6 +1944,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "handle",
           },
         },
+        { messageId: "requireContract", data: { name: "PreferenceHandler" } },
       ],
     },
 
@@ -1806,6 +1967,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1828,6 +1990,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1854,6 +2017,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1876,6 +2040,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1901,6 +2066,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "syncOrg",
           },
         },
+        { messageId: "requireContract", data: { name: "OrgSyncService" } },
       ],
     },
 
@@ -1923,6 +2089,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "lookup",
           },
         },
+        { messageId: "requireContract", data: { name: "CatalogFacade" } },
       ],
     },
 
@@ -1945,6 +2112,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "run",
           },
         },
+        { messageId: "requireContract", data: { name: "IntersectionService" } },
       ],
     },
 
@@ -1967,6 +2135,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "run",
           },
         },
+        { messageId: "requireContract", data: { name: "ExportedBagService" } },
       ],
     },
 
@@ -1996,6 +2165,7 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "run",
           },
         },
+        { messageId: "requireContract", data: { name: "Unrelated" } },
       ],
     },
 
@@ -2025,7 +2195,174 @@ RULE_TESTER.run("require-port-for-service", rule, {
             methods: "run",
           },
         },
+        { messageId: "requireContract", data: { name: "MixedService" } },
       ],
     },
   ],
+});
+
+const EXPORTED_CLASS_DOCUMENTATION = {
+  examples: [
+    {
+      id: "implemented-store-contract",
+      title: "Export behavior through a focused contract",
+      outcome: "no-match",
+      files: [
+        {
+          path: "src/artifact-store.ts",
+          source:
+            "export interface ArtifactStorage { read(id: string): Promise<Uint8Array>; } export class ArtifactStore implements ArtifactStorage { async read(id: string) { return new Uint8Array(); } }",
+        },
+      ],
+      focusPath: "src/artifact-store.ts",
+      expectedCount: 0,
+      public: true,
+    },
+    {
+      id: "concrete-only-store",
+      title: "Do not export behavior only through a concrete class",
+      outcome: "match",
+      files: [
+        {
+          path: "src/artifact-store.ts",
+          source:
+            "export class ArtifactStore { async read(id: string) { return new Uint8Array(); } }",
+        },
+      ],
+      focusPath: "src/artifact-store.ts",
+      expectedCount: 1,
+      public: true,
+    },
+    {
+      id: "safe-autofix",
+      title: "The existing factory already names the service contract",
+      outcome: "match",
+      files: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      fixedFiles: [
+        {
+          path: "src/service.ts",
+          source:
+            "export type Port = { run(): void; };\ninterface Worker { run(): void; }\nexport class Service implements Port { constructor(private readonly worker: Worker) {} run(): void { this.worker.run(); } }\nexport function create(worker: Worker): Port { return new Service(worker); }",
+        },
+      ],
+      focusPath: "src/service.ts",
+      expectedCount: 2,
+    },
+  ],
+} as const;
+
+RULE_TESTER.run("require-port-for-service (require-interface-for-exported-class)", rule, {
+  valid: [
+    {
+      filename: "src/store.js",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.jsx",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.mjs",
+      code: "export class Store { read() { return 1; } }",
+    },
+    {
+      filename: "src/store.cjs",
+      code: "export class Store { read() { return 1; } }",
+    },
+    EXPORTED_CLASS_DOCUMENTATION.examples[0].files[0]
+      .source,
+    "export abstract class ArtifactStore { abstract read(id: string): Promise<Uint8Array>; }",
+    "abstract class BaseStore { abstract read(): void; } export class ArtifactStore extends BaseStore { read() {} }",
+    "abstract class BaseStore { abstract read(): void; } export const ArtifactStore = class extends BaseStore { read() {} };",
+    "interface Storage { read(): void; } export const ArtifactStore = class implements Storage { read() {} };",
+    "export class ArtifactRecord { constructor(readonly id: string) {} }",
+    {
+      filename: "src/artifact-store.test.ts",
+      code: "export class ArtifactStore { read() {} }",
+    },
+  ],
+  invalid: [
+    {
+      name: "reuses the existing direct factory return contract",
+      filename: "src/service.ts",
+      code: EXPORTED_CLASS_DOCUMENTATION.examples[2]
+        .files[0].source,
+      output:
+        EXPORTED_CLASS_DOCUMENTATION.examples[2]
+          .fixedFiles[0].source,
+      errors: [{ messageId: "requireInterface", data: { name: "Service", deps: "worker: Worker", methods: "run" } }, { messageId: "requireContract" }],
+    },
+
+    {
+      code: EXPORTED_CLASS_DOCUMENTATION.examples[1]
+        .files[0].source,
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "export default class { run = () => undefined; }",
+      errors: [{ messageId: "requireContract", data: { name: "default" } }],
+    },
+    {
+      code: "class InternalStore { read() {} } export { InternalStore };",
+      errors: [
+        { messageId: "requireContract", data: { name: "InternalStore" } },
+      ],
+    },
+    {
+      code: "class ArtifactStore { read() {} } export default ArtifactStore;",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "class BaseStore { read() {} } export class ArtifactStore extends BaseStore { read() {} }",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "export class ArtifactStore { get current() { return 'value'; } }",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "export const ArtifactStore = class { read() {} };",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "const InternalStore = class { read() {} }; export { InternalStore as ArtifactStore };",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "const ArtifactStore = class { read() {} }; export default ArtifactStore;",
+      errors: [
+        { messageId: "requireContract", data: { name: "ArtifactStore" } },
+      ],
+    },
+    {
+      code: "export default class { get current() { return 'value'; } }",
+      errors: [{ messageId: "requireContract", data: { name: "default" } }],
+    },
+  ],
+});
+
+ruleTester({ lang: "js" }).run("require-port-for-service (JavaScript)", rule, {
+  valid: [{
+    filename: "/repo/src/domain/service.js",
+    code: "export class RequestHandler { constructor(store) { this.store = store; } handle() { this.store.handle(); } }",
+  }],
+  invalid: [],
 });

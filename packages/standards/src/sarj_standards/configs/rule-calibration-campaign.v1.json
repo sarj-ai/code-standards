@@ -2365,14 +2365,6 @@
       "outcome": "Require a bare identifier selector. Case effects, mutation and control flow remain manual; no automatic rewrite. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.32.0 / TypeScript 16.7.0 / Standards 8.51.0. Only lexically resolved local subjects and primitive literal equality cases qualify; getters, enum/named constants, RegExp values and unresolved globals are excluded. No unsafe autofix; preserve intentional contracts with the documented alternative or exact reasoned exception."
     },
     {
-      "task": "rule-audit/typescript/require-interface-for-exported-class",
-      "family": "typescript",
-      "ruleId": "require-interface-for-exported-class",
-      "state": "complete",
-      "evidence": "Three independent source, test and UI reviews retained the owning policy and corrected concrete claims. The pinned eight-source syntactic corpus was classified into policy review, compatibility exceptions and concrete defects, not universal correctness failures. Installed public packages are not complete upstream repositories. Four JavaScript applicability regressions retain TypeScript positives; type-required await analysis relies on focused tests rather than this syntactic corpus. Follow-up 2026-10-12 additional thirty-pass campaign: Five judge rounds review strict typing and maintainability admission; bounded native WARNING tiers preserve runtime special signatures, source-visible model effects, variance/Self and frame/regex lifetime where relevant. Exact verification, corpus controls, sampling, performance and CI gate evidence is recorded in packages/python/benchmarks/error-promotion-next-30-passes.json.",
-      "outcome": "Exclude JavaScript where implements syntax is unavailable. Retain explicit exported-contract policy and intentional overlap with injected-service enforcement; imported framework contracts need manual review. Preserve existing severity; no promotion or new autofix. Promotion follow-up 2026-10-12: Enable the supported default at ERROR in Python 1.33.0 / TypeScript 16.8.0 / Standards 8.52.0. Exported concrete public behavior needs an explicit substitutable contract; data-only values and static factories remain excluded, and framework contracts receive explicit local review. No unsafe autofix or universal semantic-precision claim; preserve required contracts with the documented alternative or reasoned exact-code exception."
-    },
-    {
       "task": "rule-audit/typescript/require-sql-access-class",
       "family": "typescript",
       "ruleId": "require-sql-access-class",

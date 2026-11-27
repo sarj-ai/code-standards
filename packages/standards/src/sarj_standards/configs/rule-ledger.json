@@ -495,7 +495,6 @@
       "require-explicit-service-contract",
       "require-fetch-timeout",
       "require-ime-safe-enter-handler",
-      "require-interface-for-exported-class",
       "require-jwt-lifetime",
       "require-pascal-case-zod-schema-name",
       "require-port-for-service",
@@ -982,6 +981,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/require-interface-for-exported-class",
+      "kind": "oxlint",
+      "status": "renamed",
+      "replacement": "@sarj/require-port-for-service",
+      "note": "Replace @sarj/require-interface-for-exported-class with @sarj/require-port-for-service before upgrading."
     },
     {
       "id": "@sarj/require-interface-for-injected-service",

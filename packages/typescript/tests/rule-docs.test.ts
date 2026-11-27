@@ -236,6 +236,8 @@ describe("a rename ships a map, not a hole", () => {
     "zod-naming-convention",
   ];
 
+  const RENAMED_AFTER_6_1_0: readonly string[] = ["require-interface-for-exported-class"];
+
   it("froze the whole list, so a name cannot be dropped from the guard itself", () => {
 
 
@@ -272,7 +274,7 @@ describe("a rename ships a map, not a hole", () => {
 
 
     for (const from of Object.keys(RENAMED_RULES)) {
-      expect(SHIPPED_IN_6_1_0).toContain(from);
+      expect([...SHIPPED_IN_6_1_0, ...RENAMED_AFTER_6_1_0]).toContain(from);
     }
 
     const live = new Set(RULE_NAMES);

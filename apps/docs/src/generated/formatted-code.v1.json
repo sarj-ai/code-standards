@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "a89a8d237ed92c8389c844e70b4719d7bcfadf95dac85bee751b4e3614a26871",
-  "cliSha256": "a034a99b3e72ffe22bc35944039f1c9888797b1eef76049b44f4083c12dd0243",
+  "catalogSha256": "5ca0e11d885967443f98a284c8afa2385154ae320b9a9b97847d9e6108d4044d",
+  "cliSha256": "1f9c2d45424533dca32f94ab13c712c9c983d4243be3e253bfdde3b206894545",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -11220,41 +11220,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "oxlint:require-interface-for-exported-class": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/artifact-store.ts",
-              "source": "export class ArtifactStore {\n  async read(id: string) {\n    return new Uint8Array();\n  }\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/artifact-store.ts",
-          "id": "concrete-only-store",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Do not export behavior only through a concrete class"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/artifact-store.ts",
-              "source": "export interface ArtifactStorage {\n  read(id: string): Promise<Uint8Array>;\n}\nexport class ArtifactStore implements ArtifactStorage {\n  async read(id: string) {\n    return new Uint8Array();\n  }\n}\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/artifact-store.ts",
-          "id": "implemented-store-contract",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Export behavior through a focused contract"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "oxlint:require-jwt-lifetime": {
       "examples": [
         {
@@ -11328,7 +11293,7 @@
     "oxlint:require-port-for-service": {
       "examples": [
         {
-          "expectedCount": 1,
+          "expectedCount": 2,
           "files": [
             {
               "path": "src/service.ts",

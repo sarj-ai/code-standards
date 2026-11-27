@@ -9,6 +9,7 @@ export const RENAMED_RULES = {
   "no-type-member-comment-wall": "no-declaration-comment-wall",
   "jsdoc-restates-signature": "no-restated-jsdoc",
   "zod-naming-convention": "require-pascal-case-zod-schema-name",
+  "require-interface-for-exported-class": "require-port-for-service",
   "require-interface-for-injected-service": "require-port-for-service",
   "strict-test-assertions": "prefer-whole-object-assertion",
   "trailing-value-narration": "no-trailing-value-narration",
