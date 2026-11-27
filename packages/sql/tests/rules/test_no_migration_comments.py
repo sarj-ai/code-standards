@@ -185,7 +185,6 @@ def test_comment_fix_preserves_eof_without_adding_a_newline(source: str) -> None
         [_FIX_RULE],
         [_FIX_RULE, RuleId("no-migration-comment-cruft")],
         [RuleId("no-migration-comment-cruft"), _FIX_RULE],
-        [_FIX_RULE, RuleId("no-long-migration-narration")],
     ],
 )
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "6bf44022696cf00b0c96ac743df7cf53188a6108b72980802e2361e1dc55a8b6",
-  "cliSha256": "07b632a5bc6b3e72e2e6bc2bda7177011f7f6d7eba1590fba8a20ae9d51bd9f9",
+  "catalogSha256": "21d824010bde6e462452a2b935a38937e758ab56c58422d3a69152f88ebb95ac",
+  "cliSha256": "8be618d0c26ee2d40cd9f5ffe9485a9f48abdf98c142726b01d1966847ce1c5f",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -26194,76 +26194,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "sql:no-long-migration-narration": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- Create the custom_integration table used by the application.\n-- The table stores each configured integration for an organization.\n-- The next statement defines its identifier and display name.\n-- The final statement creates those columns in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "ddl-narration",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Migration comments narrate the table declarations"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
-            }
-          ],
-          "fixedFiles": [
-            {
-              "path": "migrations/001.sql",
-              "source": "\n"
-            }
-          ],
-          "focusPath": "migrations/001.sql",
-          "id": "disabled-sql-narration",
-          "outcome": "reject",
-          "scenarioId": "disabled-sql-narration",
-          "title": "A long run consists entirely of disabled SQL declarations"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "executable-sql-without-narration",
-          "outcome": "accept",
-          "scenarioId": "disabled-sql-narration",
-          "title": "Executable declarations do not narrate disabled source"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "migrations/001.sql",
-              "source": "-- Backfill no more than 1000 rows per transaction.\n-- Keep lock_timeout at 3 seconds while API-812 writes continuously.\n-- Wait for replica lag to return below 500 ms before the next batch.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "migrations/001.sql",
-          "id": "rollback-constraint",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "Concrete operational constraints remain local"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "sql:no-migration-comment-cruft": {
       "examples": [
         {
@@ -26285,6 +26215,71 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Disabled SQL statement"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Create the custom_integration table used by the application.\n-- The table stores each configured integration for an organization.\n-- The next statement defines its identifier and display name.\n-- The final statement creates those columns in the database.\nCREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "ddl-narration",
+          "outcome": "reject",
+          "scenarioId": "ddl-narration",
+          "title": "Migration comments narrate the table declarations"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- CREATE TABLE access (id BIGINT PRIMARY KEY, permission TEXT);\n-- CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n-- CREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [
+            {
+              "path": "migrations/001.sql",
+              "source": "\n"
+            }
+          ],
+          "focusPath": "migrations/001.sql",
+          "id": "disabled-sql-narration",
+          "outcome": "reject",
+          "scenarioId": "disabled-sql-narration",
+          "title": "A long run consists entirely of disabled SQL declarations"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "CREATE TABLE access (id BIGINT PRIMARY KEY, permission TEXT);\n\nCREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n\nCREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "executable-sql-without-narration",
+          "outcome": "accept",
+          "scenarioId": "disabled-sql-narration",
+          "title": "Executable declarations do not narrate disabled source"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "migrations/001.sql",
+              "source": "-- Backfill no more than 1000 rows per transaction.\n-- Keep lock_timeout at 3 seconds while API-812 writes continuously.\n-- Wait for replica lag to return below 500 ms before the next batch.\n-- Roll back by dropping the new index concurrently.\nSET\n  lock_timeout = '3s';\n\nSELECT\n  1;\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "migrations/001.sql",
+          "id": "rollback-constraint",
+          "outcome": "accept",
+          "scenarioId": "ddl-narration",
+          "title": "Concrete operational constraints remain local"
         },
         {
           "expectedCount": 0,

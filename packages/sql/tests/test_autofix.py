@@ -9,7 +9,7 @@ from sqlglot import exp
 from sarj_sql_lint.__main__ import main
 from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.autofix import fix_source
-from sarj_sql_lint.rules.excessive_commentary import ExcessiveCommentary
+from sarj_sql_lint.rules._migration_narration import migration_narration
 
 
 if TYPE_CHECKING:
@@ -105,27 +105,19 @@ def test_cli_fix_refuses_symlink(tmp_path: Path, capsys: pytest.CaptureFixture[s
     assert "symlink" in capsys.readouterr().err
 
 
-@pytest.mark.parametrize(
-    "rule_ids",
-    [
-        ["no-long-migration-narration"],
-        ["no-long-migration-narration", "no-migration-comment-cruft"],
-        ["no-migration-comment-cruft", "no-long-migration-narration"],
-    ],
-)
-def test_disabled_sql_narration_is_fixable_when_selected_alone_or_together(rule_ids: list[RuleId]) -> None:
+def test_disabled_sql_narration_is_fixable_when_selected() -> None:
     path = Path("migrations/001.sql")
     source = "".join(
         f"-- CREATE TABLE {name} (id BIGINT PRIMARY KEY, name TEXT);\n"
         for name in ("users", "groups", "teams", "accounts")
     )
-    assert len(ExcessiveCommentary().check(path, source)) == 1
-    fixed = fix_source(path, source, rule_ids=rule_ids)
+    assert len(migration_narration(path, source, "SARJ113")) == 1
+    fixed = fix_source(path, source, rule_ids=["no-migration-comment-cruft"])
     assert fixed == "\n\n\n\n"
-    assert fix_source(path, fixed, rule_ids=rule_ids) == fixed
+    assert fix_source(path, fixed, rule_ids=["no-migration-comment-cruft"]) == fixed
     assert fix_source(path, source, rule_ids=[]) == source
-    suppressed = source.replace(";\n", "; -- sarj-noqa: SARJ115\n", 1)
-    assert fix_source(path, suppressed, rule_ids=["no-long-migration-narration"]) == suppressed
+    suppressed = source.replace(";\n", "; -- sarj-noqa: SARJ113\n", 1)
+    assert fix_source(path, suppressed, rule_ids=["no-migration-comment-cruft"]) == suppressed
 
 
 @pytest.mark.parametrize(

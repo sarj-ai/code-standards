@@ -43,7 +43,7 @@ def test_comment_ban_takes_precedence_over_legacy_comment_advice(tmp_path: Path)
     path = tmp_path / "migrations/001_work.sql"
     path.parent.mkdir()
     path.write_text("-- DROP TABLE work;\n")
-    rules = ["no-migration-comments", "no-migration-comment-cruft", "no-long-migration-narration"]
+    rules = ["no-migration-comments", "no-migration-comment-cruft"]
     findings = analyze(rules, [path])
     assert [(finding.code, finding.line) for finding in findings] == [("SARJ128", 1)]
 

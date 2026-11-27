@@ -22,6 +22,7 @@ from sarj_sql_lint.rule_base import (
     physical_lines,
     sql_comments,
 )
+from sarj_sql_lint.rules._migration_narration import migration_narration
 
 
 if TYPE_CHECKING:
@@ -115,6 +116,15 @@ ROLLBACK_CONTEXT_RE = re.compile(r"\b(?:roll\s*back|revert|undo)\b", re.IGNORECA
 _TEST_PATH_PARTS = frozenset({"test", "tests"})
 
 
+_DISABLED_SQL_EXAMPLE = (
+    "-- CREATE TABLE access (id BIGINT PRIMARY KEY, permission TEXT);\n"
+    "-- CREATE TABLE users (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE groups (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE teams (id BIGINT PRIMARY KEY, name TEXT);\n"
+    "-- CREATE TABLE accounts (id BIGINT PRIMARY KEY, name TEXT);\n"
+)
+
+
 class _CommentLine(NamedTuple):
     comment: SourceComment
     line: int
@@ -133,24 +143,30 @@ class NoCommentCruft(Rule):
     id = "no-migration-comment-cruft"
     code = "SARJ113"
     documentation = RuleDocumentation(
-        summary="Commented-out SQL, decorative banners, and untracked debt markers must be removed.",
+        summary="Commented-out SQL, decorative banners, untracked debt markers, and long implementation narration must be removed.",
         rationale=(
             "Disabled statements drift while version control preserves their history, decorative dividers obscure "
             "migration structure, and debt without a durable owner silently persists."
         ),
         remediation=(
             "Execute or delete disabled SQL, delete decorative dividers, and resolve debt or attach a durable issue "
-            "reference. Retain concise operational constraints, rollback instructions, and tool directives."
+            "reference; delete long implementation narration. Retain concise operational constraints, rollback instructions, "
+            "and tool directives."
         ),
         category=RuleCategory.MAINTAINABILITY,
         autofix=AutofixPolicy.SAFE,
-        aliases=("no-comment-cruft",),
+        aliases=("no-comment-cruft", "no-long-migration-narration", "excessive-commentary"),
         limitations=(
             "Safe fixes remove standalone line-comment banners and complete supported disabled SQL-only comment runs. Debt, references, directives, rollback guidance, mixed prose and block comments remain for review.",
             "Only authored migration files are checked; dumps and generator-owned migrations are excluded.",
             "The scanner distinguishes SQL comments from strings, identifiers, templates, and executable dollar-quoted bodies.",
             "Commented-out SQL is reported only for a conservative complete-statement grammar; ambiguous prose and partial statements are preserved.",
             "Migration-tool directives, explicit rollback instructions, and debt with a durable URL or issue identifier are preserved.",
+            "Safe fixes apply only to complete supported disabled SQL-only line-comment runs. Narrative prose and mixed operational context remain diagnostic-only.",
+            "Only authored, non-generated migrations are checked; schema dumps and non-migration SQL are excluded.",
+            "Only contiguous standalone or block-comment narration containing at least four lines and 28 words is reported.",
+            "Directives, lists, durable references, and concrete operational constraints are excluded line by line; broader semantic judgment remains in review.",
+            "The shared SQL scanner recognizes `--` and `/* ... */` comments; MySQL `#` comments are outside this rule.",
         ),
         examples=(
             RuleExample(
@@ -174,28 +190,91 @@ class NoCommentCruft(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="disabled-sql-narration",
+                scenario="disabled-sql-narration",
+                title="A long run consists entirely of disabled SQL declarations",
+                outcome=ExampleOutcome.MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", _DISABLED_SQL_EXAMPLE),),
+                fixed_files=(ExampleFile.sql("migrations/001.sql", "\n\n\n\n\n"),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=2,
+                public=True,
+            ),
+            RuleExample(
+                example_id="executable-sql-without-narration",
+                scenario="disabled-sql-narration",
+                title="Executable declarations do not narrate disabled source",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(ExampleFile.sql("migrations/001.sql", _DISABLED_SQL_EXAMPLE.replace("-- ", "")),),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="ddl-narration",
+                scenario="ddl-narration",
+                title="Migration comments narrate the table declarations",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001.sql",
+                        "-- Create the custom_integration table used by the application.\n"
+                        "-- The table stores each configured integration for an organization.\n"
+                        "-- The next statement defines its identifier and display name.\n"
+                        "-- The final statement creates those columns in the database.\n"
+                        "CREATE TABLE IF NOT EXISTS integration (id BIGINT PRIMARY KEY, name TEXT);\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="rollback-constraint",
+                scenario="ddl-narration",
+                title="Concrete operational constraints remain local",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.sql(
+                        "migrations/001.sql",
+                        "-- Backfill no more than 1000 rows per transaction.\n"
+                        "-- Keep lock_timeout at 3 seconds while API-812 writes continuously.\n"
+                        "-- Wait for replica lag to return below 500 ms before the next batch.\n"
+                        "-- Roll back by dropping the new index concurrently.\n"
+                        "SET lock_timeout = '3s';\nSELECT 1;\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("migrations/001.sql"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
 
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
-        source = mask_copy_input(source)
-        path_parts = frozenset(part.lower() for part in path.parts)
-        if (
-            not path_parts.isdisjoint(_TEST_PATH_PARTS)
-            or is_dump_file(source, path)
-            or not is_migration_source(path, source)
-            or is_generated_migration(path, source)
-        ):
-            return []
-        findings: list[Diagnostic] = []
-        for comments in _comment_groups(source):
-            finding = _finding(comments)
-            if finding is None:
-                continue
-            findings.append(Diagnostic(path, finding.line, finding.column, self.code, finding.message))
-        return findings
+        return [*comment_cruft(path, source), *migration_narration(path, source, self.code)]
+
+
+def comment_cruft(path: Path, source: str) -> list[Diagnostic]:
+    source = mask_copy_input(source)
+    path_parts = frozenset(part.lower() for part in path.parts)
+    if (
+        not path_parts.isdisjoint(_TEST_PATH_PARTS)
+        or is_dump_file(source, path)
+        or not is_migration_source(path, source)
+        or is_generated_migration(path, source)
+    ):
+        return []
+    findings: list[Diagnostic] = []
+    for comments in _comment_groups(source):
+        finding = _finding(comments)
+        if finding is None:
+            continue
+        findings.append(Diagnostic(path, finding.line, finding.column, NoCommentCruft.code, finding.message))
+    return findings
 
 
 def _finding(comments: list[SourceComment]) -> _Finding | None:

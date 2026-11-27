@@ -9,6 +9,7 @@ from sarj_sql_lint._postgres import parse_postgres
 from sarj_sql_lint.autofix import fix_source
 from sarj_sql_lint.rule_base import physical_lines, source_location
 from sarj_sql_lint.rules import REGISTRY
+from sarj_sql_lint.rules._migration_narration import migration_narration
 
 
 _SEPARATORS = ["\u2028", "\x85", "\f", "\u2029"]
@@ -102,9 +103,9 @@ def test_long_disabled_sql_comment_fix_uses_physical_comment_groups(separator: s
     )
     source = prefix + comments
     path = Path("migrations/20261024_physical_lines.sql")
-    rule_id = "no-long-migration-narration"
+    rule_id = "no-migration-comment-cruft"
     native = REGISTRY[rule_id]()
-    assert len(native.check(path, source)) == 1
+    assert len(migration_narration(path, source, "SARJ113")) == 1
 
     fixed = fix_source(path, source, rule_ids=[rule_id])
 

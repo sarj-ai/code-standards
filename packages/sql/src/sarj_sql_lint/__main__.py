@@ -89,7 +89,7 @@ def _source_diagnostics(path: Path, source: str, rules: Sequence[Rule], *, comme
     migration = is_migration_source(path, source)
     findings: list[Diagnostic] = []
     for rule in rules:
-        if migration and comments_banned and rule.code in {"SARJ113", "SARJ115"}:
+        if migration and comments_banned and rule.code == "SARJ113":
             continue
         findings.extend(
             diagnostic
