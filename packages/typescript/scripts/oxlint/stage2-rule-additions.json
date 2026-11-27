@@ -6,6 +6,7 @@
     { "name": "effects", "specifier": "@sarj/eslint-plugin/effects", "surveyedVersion": "1.0.2", "note": "the plugin ashStack vendors" }
   ],
   "rules": {
+    "@sarj/no-adjacent-boolean-parameters": { "level": "warn" },
     "@sarj/no-discarded-tagged-outcome": { "level": "warn" },
     "@sarj/no-shared-mutable-zod-default": { "level": "warn" },
     "@sarj/prefer-monotonic-for-elapsed-time": { "level": "warn" },

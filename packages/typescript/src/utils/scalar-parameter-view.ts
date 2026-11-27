@@ -51,17 +51,21 @@ interface ParameterView {
 
 /** Accept one pure returned view, retaining every bound or inspected root field. */
 export function scalarParameterView(native: NativeTypes, parameter: ParameterDeclaration, body: Node): ReadonlySet<string> | null {
-  return parameterReads(native, parameter, body, true);
+  return parameterReads(native, parameter, body, { jsx: true });
 }
 
 /** Scalar consumers do not inherit the JSX runtime proof used by component views. */
 export function scalarParameterReads(native: NativeTypes, parameter: ParameterDeclaration, body: Node, calls = false,
   auxiliaries?: ReadonlySet<number>): ReadonlySet<string> | null {
-  return parameterReads(native, parameter, body, false, calls, auxiliaries);
+  return parameterReads(native, parameter, body, { jsx: false, calls, auxiliaries });
 }
 
-function parameterReads(native: NativeTypes, parameter: ParameterDeclaration, body: Node, jsx: boolean, calls = false,
-  auxiliaries?: ReadonlySet<number>): ReadonlySet<string> | null {
+function parameterReads(
+  native: NativeTypes,
+  parameter: ParameterDeclaration,
+  body: Node,
+  { jsx, calls = false, auxiliaries }: { jsx: boolean; calls?: boolean; auxiliaries?: ReadonlySet<number> | undefined },
+): ReadonlySet<string> | null {
   const { ast, checker } = native;
   if (parameter.dotDotDotToken || parameter.initializer || ast.isArrayBindingPattern(parameter.name)) return null;
   const root = ast.isIdentifier(parameter.name) ? checker.getSymbolAtLocation(parameter.name) : undefined;

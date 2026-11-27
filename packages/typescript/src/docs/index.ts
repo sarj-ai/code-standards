@@ -15,6 +15,7 @@ import { IAC_SOURCE_COUPLED_TEST_DOCUMENTATION } from "./iac-source-coupled-test
 import { INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION } from "./interface-contract-members-private.js";
 import { JSX_NO_FORBIDDEN_NESTING_DOCUMENTATION } from "./jsx-no-forbidden-nesting.js";
 import { NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION } from "./named-child-schema-type.js";
+import { NO_ADJACENT_BOOLEAN_PARAMETERS_DOCUMENTATION } from "./no-adjacent-boolean-parameters.js";
 import { NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION } from "./no-bare-return-from-test-catch.js";
 import { NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION } from "./no-bespoke-api-case-conversion.js";
 import { NO_BLOCKED_INPUT_PASTE_DOCUMENTATION } from "./no-blocked-input-paste.js";
@@ -193,6 +194,7 @@ export const RULE_DOCUMENTATION = {
   "interface-contract-members-private": INTERFACE_CONTRACT_MEMBERS_PRIVATE_DOCUMENTATION,
   "jsx-no-forbidden-nesting": JSX_NO_FORBIDDEN_NESTING_DOCUMENTATION,
   "named-child-schema-type": NAMED_CHILD_SCHEMA_TYPE_DOCUMENTATION,
+  "no-adjacent-boolean-parameters": NO_ADJACENT_BOOLEAN_PARAMETERS_DOCUMENTATION,
   "no-bare-return-from-test-catch": NO_BARE_RETURN_FROM_TEST_CATCH_DOCUMENTATION,
   "no-bespoke-api-case-conversion": NO_BESPOKE_API_CASE_CONVERSION_DOCUMENTATION,
   "no-blocked-input-paste": NO_BLOCKED_INPUT_PASTE_DOCUMENTATION,

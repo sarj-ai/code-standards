@@ -33,7 +33,7 @@ function body(comment: Comment): string {
     .trim();
 }
 
-function eligible(text: string, includeValueTags: boolean, jsDoc = false): boolean {
+function eligible(text: string, { includeValueTags, jsDoc = false }: { includeValueTags: boolean; jsDoc?: boolean }): boolean {
   return text.length > 0 && !DIRECTIVE_RE.test(text) && !LICENSE_RE.test(text) &&
     (includeValueTags || !VALUE_TAG_RE.test(text) && (!jsDoc || !ANY_TAG_RE.test(text)));
 }
@@ -86,20 +86,20 @@ export function proseGroups(
   const flush = (): void => {
     if (run.length === 0) return;
     const text = run.map(body).join("\n");
-    if (eligible(text, includeValueTags)) groups.push({ comment: run[0]!, text, hasTypedTags: TYPED_TAG_RE.test(text) });
+    if (eligible(text, { includeValueTags })) groups.push({ comment: run[0]!, text, hasTypedTags: TYPED_TAG_RE.test(text) });
     run = [];
   };
   for (const comment of sourceCode.getAllComments()) {
     const text = body(comment);
     if (comment.type === "Block") {
       flush();
-      if (eligible(text, includeValueTags, comment.value.startsWith("*"))) {
+      if (eligible(text, { includeValueTags, jsDoc: comment.value.startsWith("*") })) {
         groups.push({ comment, text, hasTypedTags: TYPED_TAG_RE.test(text) });
       }
       continue;
     }
     const ownLine = sourceCode.lines[comment.loc.start.line - 1]?.slice(0, comment.loc.start.column).trim() === "";
-    if (!ownLine || !eligible(text, includeValueTags)) {
+    if (!ownLine || !eligible(text, { includeValueTags })) {
       flush();
       continue;
     }
