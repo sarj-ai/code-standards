@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from itertools import chain
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, final, override
@@ -31,6 +32,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_iac_lint._hcl import Block
+    from sarj_iac_lint.terraform import TerraformSession
 
 
 _NON_SECRET_LITERAL = re.compile(r"true|false", re.IGNORECASE)
@@ -59,8 +61,9 @@ class NoPlaintextSecretEnv(Rule):
         limitations=(
             "Only `env` blocks inside Terraform resources in .tf files are checked.",
             (
-                "The literal name must end in SECRET, TOKEN, PASSWORD, API_KEY or PRIVATE_KEY; other secrets, such as a "
-                "password interpolated into a connection string, are not recognized."
+                "Other literal names are reported only when the value directly consumes a same-module variable declared "
+                "`sensitive = true` (bare reference, template interpolation, `urlencode`/`format` argument or conditional "
+                "branch); secrets reached through locals, module outputs or other functions are not recognized."
             ),
             "Empty literal values are not reported.",
             "Public Secret Manager names, homogeneous metadata branches, metadata-only templates and format calls are allowed; a metadata reference does not exempt other dynamic values in the same expression.",
@@ -132,6 +135,13 @@ class NoPlaintextSecretEnv(Rule):
     )
     description = documentation.summary
 
+    def __init__(
+        self,
+        *,
+        session: TerraformSession | None = None,  # sarj-noqa: SARJ468 -- Registry requires no-argument factories.
+    ) -> None:
+        self.session = session
+
     @override
     def check(self, path: Path, source: str) -> list[Diagnostic]:
         if path.suffix.lower() != ".tf" or "env" not in source:
@@ -140,31 +150,34 @@ class NoPlaintextSecretEnv(Rule):
             top = balanced_blocks(source)
         except ValueError:
             return []
+        sensitive_names = frozenset(
+            block.labels[0]
+            for block in (self.session.blocks(path) if self.session is not None else top)
+            if block.type == "variable"
+            and len(block.labels) == 1
+            and (sensitive := block.attribute("sensitive")) is not None
+            and sensitive.value.strip() == "true"
+        )
         findings: list[Diagnostic] = []
-        for resource in top:
-            if resource.type != "resource":
+        for env in chain.from_iterable(_env_blocks(resource) for resource in top if resource.type == "resource"):
+            name_attribute = env.attribute("name")
+            value_attribute = env.attribute("value")
+            if name_attribute is None or value_attribute is None:
                 continue
-            for env in _env_blocks(resource):
-                name_attribute = env.attribute("name")
-                value_attribute = env.attribute("value")
-                if name_attribute is None or value_attribute is None:
-                    continue
-                name = literal_string(name_attribute.value.strip())
-                if name is None or not _SECRET_NAME.fullmatch(name):
-                    continue
-                if _is_inert_value(value_attribute.value):
-                    continue
-                findings.append(
-                    Diagnostic(
-                        path,
-                        value_attribute.line,
-                        value_attribute.col,
-                        self.code,
-                        f"Environment variable {name} receives a plain value; reference a Secret Manager secret "
-                        "with value_source or value_from instead",
-                        severity=DefaultLevel.ERROR,
-                    )
+            name = literal_string(name_attribute.value.strip())
+            if name is None or not _is_plaintext_secret(name, value_attribute.value, sensitive_names):
+                continue
+            findings.append(
+                Diagnostic(
+                    path,
+                    value_attribute.line,
+                    value_attribute.col,
+                    self.code,
+                    f"Environment variable {name} receives a plain value; reference a Secret Manager secret "
+                    "with value_source or value_from instead",
+                    severity=DefaultLevel.ERROR,
                 )
+            )
         return findings
 
 
@@ -173,6 +186,29 @@ def _env_blocks(block: Block) -> Iterator[Block]:
         if child.type == "env":
             yield child
         yield from _env_blocks(child)
+
+
+def _is_plaintext_secret(name: str, value: str, sensitive_names: frozenset[str]) -> bool:
+    if _SECRET_NAME.fullmatch(name):
+        return not _is_inert_value(value)
+    return _consumes_sensitive_variable(value, sensitive_names)
+
+
+def _consumes_sensitive_variable(raw: str, names: frozenset[str], depth: int = 0) -> bool:
+    if depth >= _MAX_METADATA_DEPTH:
+        return False
+    parts = strip_outer_parentheses(tokens(raw))
+    if len(parts) == 1 and parts[0].startswith("var."):
+        name = parts[0].removeprefix("var.")
+        if "." not in name and name in names:
+            return True
+    if branches := conditional_branches(parts):
+        return any(_consumes_sensitive_variable(" ".join(branch), names, depth + 1) for branch in branches)
+    if parts[:1] in {("urlencode",), ("format",)} and (arguments := call_arguments(parts)) is not None:
+        return any(_consumes_sensitive_variable(" ".join(argument), names, depth + 1) for argument in arguments)
+    if len(parts) == 1 and parts[0].startswith('"'):
+        return any(_consumes_sensitive_variable(item, names, depth + 1) for item in template_expressions(parts[0]))
+    return False
 
 
 def _is_inert_value(raw: str, depth: int = 0) -> bool:

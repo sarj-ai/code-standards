@@ -126,3 +126,65 @@ def test_metadata_cannot_hide_secret_material(value: str) -> None:
 def test_public_metadata_composition_is_not_secret_material(value: str) -> None:
     env = f'      env {{\n        name = "API_KEY"\n        value = {value}\n      }}\n'
     assert _lines(_service(env)) == []
+
+
+_VARIABLES = (
+    'variable "database_url" {\n  type      = string\n  sensitive = true\n}\n\n'
+    'variable "region" {\n  type = string\n}\n\n'
+    'variable "legacy" {\n  type      = string\n  sensitive = false\n}\n\n'
+)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "var.database_url",
+        '"${var.database_url}"',
+        '"postgresql://app:${urlencode(var.database_url)}@db/app"',
+        (
+            'var.region == "x" ? "postgresql://app:${urlencode(var.database_url)}@a/app" '
+            ': "postgresql://app:${urlencode(var.database_url)}@b/app"'
+        ),
+        'format("%s?sslmode=require", var.database_url)',
+    ],
+)
+def test_reports_sensitive_variable_values(value: str) -> None:
+    env = f'      env {{\n        name = "DATABASE_URL"\n        value = {value}\n      }}\n'
+    assert _lines(_VARIABLES + _service(env)) == [20]
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "var.region",
+        "var.legacy",
+        '"${var.region}-db"',
+        "local.database_url",
+        "var.database_url_suffix",
+        "var.database_url.password",
+        '"postgresql://db/app"',
+        "module.database.url",
+        "data.google_sql_database_instance.database.connection_name",
+        "sha256(var.database_url)",
+        "length(var.database_url)",
+        'var.database_url == "" ? "off" : "on"',
+    ],
+)
+def test_allows_values_without_consuming_sensitive_variables(value: str) -> None:
+    env = f'      env {{\n        name = "DATABASE_URL"\n        value = {value}\n      }}\n'
+    assert _lines(_VARIABLES + _service(env)) == []
+
+
+@pytest.mark.parametrize(("sensitive", "attribute"), [(True, "  sensitive = true\n"), (False, "")])
+def test_runner_resolves_sensitive_variables_in_sibling_file(
+    tmp_path: Path, attribute: str, *, sensitive: bool
+) -> None:
+    declaration = 'variable "database_url" {\n  type = string\n' + attribute
+    (tmp_path / "variables.tf").write_text(declaration + "}\n", encoding="utf-8")
+    main = tmp_path / "main.tf"
+    main.write_text(
+        _service('      env {\n        name = "DATABASE_URL"\n        value = var.database_url\n      }\n'),
+        encoding="utf-8",
+    )
+    findings = analyze(["no-plaintext-secret-env"], [main])
+    assert [(finding.code, finding.line) for finding in findings] == ([("SARJ214", 6)] if sensitive else [])
