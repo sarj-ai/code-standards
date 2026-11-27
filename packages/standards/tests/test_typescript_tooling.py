@@ -461,7 +461,7 @@ def test_generated_source_file_exclusion_survives_setup_and_offline_update(
                 oxfmt.OxfmtSeed(None, {"ignorePatterns": ["src/components/ui/**", "src/hooks/**"]})
             ),
             "src/authored.tsx": source.decode(),
-            "tsconfig.json": '{"compilerOptions":{"jsx":"react-jsx"},"include":["src"]}\n',
+            "tsconfig.json": '{"compilerOptions":{"jsx":"react-jsx","strict":true},"include":["src"]}\n',
         },
     )
     _with_tools(root)
