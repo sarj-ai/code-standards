@@ -11,7 +11,7 @@ import { unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
 import { getPropertyName, staticString } from "../utils/static-string.js";
-import { importedTestMockNamespace } from "../utils/test-mock-provenance.js";
+import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "../utils/test-mock-provenance.js";
 
 const NAME = "no-first-party-module-mock";
 
@@ -56,7 +56,8 @@ export default defineRule({
         const receiver = unwrapExpression(callee.object);
         const method = getPropertyName(callee);
         if (receiver.type !== "Identifier" || method === null || !MOCK_METHODS.has(method)) return;
-        const framework = importedTestMockNamespace(context.sourceCode, receiver);
+        const framework = importedTestMockNamespace(context.sourceCode, receiver) ??
+          (isUnshadowedTestMockGlobal(context.sourceCode, receiver) ? receiver.name === "jest" ? "jest" : "vitest" : null);
         if (framework === null ||
           (method === "unstable_mockModule" && framework !== "jest") ||
           (framework === "jest" && mayBeVirtual(node.arguments[2]))) return;

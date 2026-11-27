@@ -5,6 +5,9 @@ const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-first-party-module-mock", rule, {
   valid: [
+    { name: "allows third-party module mocks through globals", filename: "action.test.ts", code: "vi.mock('next/navigation', () => ({}));" },
+    { name: "allows virtual module mocks through globals", filename: "action.test.ts", code: "jest.mock('./virtual', () => ({}), { virtual: true });" },
+    { name: "ignores a parameter named vi", filename: "action.test.ts", code: "function check(vi: LocalMocks) { vi.mock('./service'); }" },
     { name: "keeps interpolated module specifiers opaque", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(`./${moduleName}`);' },
     { name: "keeps a third-party module through a const assertion", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(("react" as const));' },
     { name: "keeps unresolved computed mocking methods opaque", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi[method](`./service`);' },
@@ -25,6 +28,8 @@ RULE_TESTER.run("no-first-party-module-mock", rule, {
     { name: "ignores generated files", filename: "tests/generated/action.test.ts", code: "import { vi } from 'vitest'; vi.mock('./service');" },
   ],
   invalid: [
+    { name: "reports first-party module mocks through global vi", filename: "action.test.ts", code: "vi.mock('./service', () => ({}));", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
+    { name: "reports first-party module mocks through global jest", filename: "action.test.ts", code: "jest.doMock('../service');", errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "../service" } }] },
     { name: "retains a relative no-substitution template module", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(`./service`);', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
     { name: "retains a relative module through a const assertion", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi.mock(("./service" as const));', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
     { name: "recognizes imported static computed mocking methods", filename: "action.test.ts", code: 'import { vi } from "vitest"; vi["mock"](`./service`);', errors: [{ messageId: "noFirstPartyModuleMock", data: { module: "./service" } }] },
