@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from sarj_python_lint.__main__ import main
+from sarj_python_lint.__main__ import analyze, main
 from sarj_python_lint.rule_base import RuleExample, Severity
 from sarj_python_lint.rules.prefer_str_enum import PreferStrEnum
 
@@ -2971,3 +2971,141 @@ def test_generic_scope_does_not_hide_proven_builtin_string_fields(source: str) -
 )
 def test_native_generic_annotation_scope_preserves_provider_identity(source: str, expected: int) -> None:
     assert len(_check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    ("field", "first", "second", "annotation", "expected"),
+    [
+        ("state", "queued", "done", "str | None", 1),
+        ("interpolation", "hold", "cubic", "str", 1),
+        ("output_format", "json", "sarif", "str", 1),
+        ("scheme", "http", "https", "str", 0),
+        ("encoding", "utf-8", "utf-8-sig", "str", 0),
+        ("mode", "rb", "wb", "str", 0),
+        ("name", "invoice", "receipt", "str", 0),
+        ("state", "queued", "queued", "str", 0),
+        ("state", "queued", "done", "Literal['queued', 'done']", 0),
+    ],
+)
+def test_field_comparisons_form_one_module_domain(
+    field: str, first: str, second: str, annotation: str, expected: int
+) -> None:
+    source = f"""from typing import Literal
+
+class Record:
+    {field}: {annotation}
+
+def first(record: Record) -> bool:
+    return {first!r} == record.{field}
+
+def second(record: Record) -> bool:
+    return record.{field} != {second!r}
+"""
+    diagnostics = _check(source, "app/records.py")
+    assert len(diagnostics) == expected
+    if expected:
+        assert [(item.line, item.col, item.severity) for item in diagnostics] == [(4, 5, Severity.WARNING)]
+
+
+@pytest.mark.parametrize(
+    ("declaration", "tests_path", "expected"),
+    [
+        ("    state: str", "app/records.py", 1),
+        ("    state: str  # sarj-noqa: SARJ006", "app/records.py", 0),
+        ("    state: str", "tests/test_records.py", 0),
+        ("    state: str", "generated/records.py", 0),
+    ],
+)
+def test_declared_field_membership_respects_suppressions_and_path(
+    declaration: str, tests_path: str, expected: int
+) -> None:
+    source = f"""class Record:
+{declaration}
+
+def ready(record: Record) -> bool:
+    return record.state in {{'queued', 'done'}}
+"""
+    assert len(_check(source, tests_path)) == expected
+
+
+def test_compared_field_defers_to_existing_rejecting_dispatch() -> None:
+    source = """class Record:
+    state: str
+
+    def validate(self) -> None:
+        if self.state not in {'queued', 'done'}:
+            raise ValueError(self.state)
+"""
+    [diagnostic] = _check(source, "app/records.py")
+    assert (diagnostic.line, diagnostic.severity) == (5, Severity.ERROR)
+
+
+@pytest.mark.parametrize("other_distribution", [False, True])
+def test_compared_field_abstains_on_conflicting_distribution_annotation(
+    tmp_path: Path, *, other_distribution: bool
+) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'records'\n", encoding="utf-8")
+    declarations = tmp_path / "other"
+    declarations.mkdir()
+    if other_distribution:
+        (declarations / "pyproject.toml").write_text("[project]\nname = 'other'\n", encoding="utf-8")
+    (declarations / "record.py").write_text(
+        "from typing import Literal\nclass Other:\n    state: Literal['open', 'closed']\n", encoding="utf-8"
+    )
+    source = tmp_path / "record.py"
+    source.write_text(
+        "class Record:\n    state: str\ndef ready(record: Record) -> bool:\n    return record.state in ('queued', 'done')\n",
+        encoding="utf-8",
+    )
+    diagnostics = analyze(["prefer-str-enum"], [source])
+    assert len(diagnostics) == int(other_distribution)
+
+
+def test_field_comparison_does_not_join_two_local_owners_with_different_types() -> None:
+    source = """from typing import Literal
+
+class Record:
+    state: str
+
+class Other:
+    state: Literal['open', 'closed']
+
+def ready(record: Record) -> bool:
+    return record.state in {'queued', 'done'}
+"""
+    assert _check(source, "app/records.py") == []
+
+
+def test_compared_field_does_not_borrow_literals_from_foreign_typed_receiver() -> None:
+    source = """from another_module import Other
+
+class Record:
+    state: str
+
+def ready(record: Record) -> bool:
+    return record.state == 'queued'
+
+def complete(other: Other) -> bool:
+    return other.state == 'done'
+"""
+    assert _check(source, "app/records.py") == []
+
+
+@pytest.mark.parametrize(("suppression", "expected_code"), [("", "SARJ006"), ("  # sarj-noqa: SARJ006", "SARJ530")])
+def test_specific_closed_field_advice_takes_precedence(tmp_path: Path, suppression: str, expected_code: str) -> None:
+    source = tmp_path / "records.py"
+    source.write_text(
+        f"""from dataclasses import dataclass
+
+@dataclass
+class Record:
+    state: str = 'queued'{suppression}
+
+def ready(record: Record) -> bool:
+    return record.state in ('queued', 'done')
+""",
+        encoding="utf-8",
+    )
+    diagnostics = analyze(["prefer-str-enum", "prefer-typed-settings-field"], [source])
+    assert [(item.code, item.line, item.severity) for item in diagnostics] == [(expected_code, 5, Severity.WARNING)]

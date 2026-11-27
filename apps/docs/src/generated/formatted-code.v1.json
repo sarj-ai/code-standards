@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "da2b61b6237b5f24bc2f69beba7ae4404874588ab244ccc308d7e2fe3823c8b0",
-  "cliSha256": "f4bf263b193e1b9c88fe5645965c73b5b65e4e3a015c1739e1501fa9daeef49d",
+  "catalogSha256": "65a38ba1f7abe19ba42e14123154a6987cb97210b4231659488f7e5fb8819575",
+  "cliSha256": "a5f5c3aacb56a096a2f7535d9e2f7adf8fb9e043875211d46fa70af2e42c0186",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -22504,6 +22504,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/render.py",
+              "source": "class Frame:\n    interpolation: str\n\n\ndef holds(frame: Frame) -> bool:\n    return frame.interpolation == \"hold\"\n\n\ndef eases(frame: Frame) -> bool:\n    return frame.interpolation == \"cubic\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "compared-record-field",
+          "outcome": "reject",
+          "scenarioId": "compared-record-field",
+          "title": "A string field is compared with fixed tokens in several functions"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/service.py",
               "source": "class Order[T]:\n    statuses = (\"pending\", \"shipped\")\n    status: str\n"
             }
@@ -22529,6 +22544,21 @@
           "outcome": "accept",
           "scenarioId": "provider-identity",
           "title": "A generic parameter does not become the builtin string type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/render.py",
+              "source": "from typing import Literal\n\ntype Interpolation = Literal[\"hold\", \"cubic\"]\n\n\nclass Frame:\n    interpolation: Interpolation\n\n\ndef holds(frame: Frame) -> bool:\n    return frame.interpolation == \"hold\"\n\n\ndef eases(frame: Frame) -> bool:\n    return frame.interpolation == \"cubic\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/render.py",
+          "id": "named-record-field",
+          "outcome": "accept",
+          "scenarioId": "compared-record-field",
+          "title": "A named field domain preserves the choices"
         },
         {
           "expectedCount": 0,
@@ -22975,6 +23005,21 @@
           "expectedCount": 1,
           "files": [
             {
+              "path": "app/models.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Session:\n    status: str = \"completed\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "raw-dataclass-token-default",
+          "outcome": "reject",
+          "scenarioId": "raw-dataclass-token-default",
+          "title": "A dataclass status default names a choice"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
               "path": "app/settings.py",
               "source": "from pydantic_settings import BaseSettings\n\n\nclass Settings(BaseSettings):\n    voice: str = \"voice_a\"\n"
             }
@@ -22985,6 +23030,21 @@
           "outcome": "reject",
           "scenarioId": "token-default-domain",
           "title": "A raw token default does not declare its domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from dataclasses import dataclass\nfrom typing import Literal\n\ntype Status = Literal[\"queued\", \"completed\"]\n\n\n@dataclass\nclass Session:\n    status: Status = \"completed\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "typed-dataclass-token-default",
+          "outcome": "accept",
+          "scenarioId": "raw-dataclass-token-default",
+          "title": "A dataclass status retains its named domain"
         },
         {
           "expectedCount": 0,

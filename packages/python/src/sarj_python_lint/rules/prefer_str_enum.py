@@ -6,13 +6,14 @@ from pathlib import PurePosixPath
 import re
 from types import MappingProxyType
 from typing import TYPE_CHECKING, NamedTuple, final, override
+from weakref import WeakKeyDictionary
 
 from sarj_python_lint.rule_base import (
     AutofixPolicy,
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -24,14 +25,16 @@ from sarj_python_lint.rules._annotation_semantics import (
 )
 from sarj_python_lint.rules._ast_index import (
     ChildNodes,
+    NodeIndex,
     children,
     has_own_yield,
     statement_blocks,
     walk,
     walk as walk_ast,
 )
+from sarj_python_lint.rules._first_party import distribution_root
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._paths import is_generated, is_test_path
 from sarj_python_lint.rules._suite_flow import control_condition, previous_statements
 
 
@@ -40,7 +43,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
-    from sarj_python_lint.rules._ast_index import NodeIndex
+    from sarj_python_lint.rules._project_index import ProjectIndexSet
 
 
 type _ClusterEntry = tuple[int, int, set[str], set[str], set[str], set[str], bool]
@@ -56,6 +59,12 @@ _NAMESPACE_ACCESS_MEMBERS = frozenset({"__dict__", "__getattribute__", "__setatt
 
 class _LiteralAliases(NamedTuple):
     names: frozenset[str]
+
+
+class _LiteralComparison(NamedTuple):
+    subject: ast.expr
+    literals: list[str]
+    operator: str
 
 
 class _ExtractedCompare(NamedTuple):
@@ -198,7 +207,7 @@ _ENUM_BASE_SUFFIXES = ("Enum", "Flag")
 
 
 @final
-class PreferStrEnum(Rule):
+class PreferStrEnum(ProjectRule):
     id: str = "prefer-str-enum"
     code: str = "SARJ006"
     documentation = RuleDocumentation(
@@ -211,6 +220,7 @@ class PreferStrEnum(Rule):
             "Automatic fixes reuse one existing canonical module Literal alias only when its finite string domain strictly contains a closed private nested helper's handled literal match cases and every direct caller supplies a handled-case literal. Reachable fallback exceptions retain manual ownership because their tracebacks can expose private helper frames. An unhandled alias member must keep the existing rejecting fallback reachable; exact handled-domain aliases remain manual because narrowing would introduce an unreachable-pattern type error. Only the str parameter annotation changes; defaults, comments, generics, aliases/escapes, reflection/frame access, shared bodies and runtime enum creation remain manual.",
             "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
             "Rejecting dispatch and sibling choice collections are errors. Literal-only string returns and unguarded parameter lookups in a fixed string-keyed mapping are warnings.",
+            "A uniquely declared raw-string field compared with multiple short tokens in its module receives a warning. Conflicting annotations in the same distribution and fields already reported by rejecting dispatch or choice collections abstain.",
             "Generated code, external vocabularies, open-ended name domains, and test-only comparison clusters are excluded.",
         ),
         examples=(
@@ -392,6 +402,41 @@ class PreferStrEnum(Rule):
                 expected_count=1,
                 public=True,
             ),
+            RuleExample(
+                example_id="compared-record-field",
+                scenario="compared-record-field",
+                title="A string field is compared with fixed tokens in several functions",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "class Frame:\n    interpolation: str\n"
+                        "def holds(frame: Frame) -> bool:\n    return frame.interpolation == 'hold'\n"
+                        "def eases(frame: Frame) -> bool:\n    return frame.interpolation == 'cubic'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="named-record-field",
+                scenario="compared-record-field",
+                title="A named field domain preserves the choices",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/render.py",
+                        "from typing import Literal\ntype Interpolation = Literal['hold', 'cubic']\n"
+                        "class Frame:\n    interpolation: Interpolation\n"
+                        "def holds(frame: Frame) -> bool:\n    return frame.interpolation == 'hold'\n"
+                        "def eases(frame: Frame) -> bool:\n    return frame.interpolation == 'cubic'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/render.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -406,7 +451,8 @@ class PreferStrEnum(Rule):
         warning_signal = authored and "str" in source and ('"' in source or "'" in source)
         return_signal = warning_signal and "return" in source and "->" in source
         lookup_signal = warning_signal and "{" in source and "[" in source
-        if not (dispatch_signal or return_signal or lookup_signal):
+        field_signal = warning_signal and "class" in source and "." in source
+        if not (dispatch_signal or return_signal or lookup_signal or field_signal):
             return []
         tree = context.tree
         if tree is None:
@@ -416,6 +462,8 @@ class PreferStrEnum(Rule):
             diags.extend(_literal_return_diagnostics(context, self.code))
         if lookup_signal:
             diags.extend(_dict_lookup_diagnostics(context, tree, self.code))
+        if field_signal:
+            diags.extend(_compared_field_diagnostics(context, diags, self.code))
         diags.sort(key=lambda diag: (diag.line, diag.col))
         return [diag for diag in diags if not context.suppressions.is_suppressed(diag.line, self.code)]
 
@@ -698,6 +746,145 @@ class PreferStrEnum(Rule):
                 )
             )
         return diags
+
+
+_PROJECT_NON_STRING_FIELDS: WeakKeyDictionary[ProjectIndexSet, dict[Path, frozenset[str]]] = WeakKeyDictionary()
+
+
+def _compared_field_diagnostics(
+    context: PythonFileContext, existing: list[Diagnostic], code: str
+) -> Iterator[Diagnostic]:
+    if context.has_wildcard_import or context.dynamic_namespace:
+        return
+    fields = _unique_string_fields(context)
+    if not fields:
+        return
+    prior = {(item.line, item.col) for item in existing if item.severity is Severity.ERROR}
+    domains = _compared_field_domains(context, fields, prior)
+    for name, values in domains.items():
+        field = fields[name]
+        position = (field.lineno, field.col_offset + 1)
+        if position in prior or not _string_domain_fires(name, values):
+            continue
+        if name in _project_non_string_fields(context):
+            continue
+        yield Diagnostic(
+            context.path,
+            *position,
+            code,
+            f"Field `{name}` is compared with {len(values)} fixed tokens — use a named `Literal` or `StrEnum` for the choice.",
+            severity=Severity.WARNING,
+        )
+
+
+def _unique_string_fields(context: PythonFileContext) -> dict[str, ast.AnnAssign]:
+    candidates: dict[str, ast.AnnAssign] = {}
+    seen: set[str] = set()
+    for name, field, is_string in _annotated_class_fields(context.node_index, context.imports):
+        if name in seen:
+            candidates.pop(name, None)
+        elif is_string and not _cluster_is_already_closed(name, frozenset()):
+            candidates[name] = field
+        seen.add(name)
+    return candidates
+
+
+def _annotated_class_fields(index: NodeIndex, imports: ImportIndex) -> Iterator[tuple[str, ast.AnnAssign, bool]]:
+    for owner in index.query((ast.ClassDef,)):
+        if not isinstance(owner, ast.ClassDef):
+            continue
+        scope = _scoped_annotation_imports(owner, imports, index.parents)
+        for statement in owner.body:
+            if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name):
+                yield (
+                    statement.target.id,
+                    statement,
+                    _is_choice_string_annotation(statement.annotation, frozenset(), scope.imports),
+                )
+
+
+def _project_non_string_fields(context: PythonFileContext) -> frozenset[str]:
+    project = context.session.project
+    facts = context.session.first_party
+    root = distribution_root(context.path, facts=facts)
+    if root is None or project is None:
+        return frozenset()
+    cache = _PROJECT_NON_STRING_FIELDS.setdefault(project, {})
+    if root not in cache:
+        cache[root] = frozenset(
+            name
+            for unit in project.source_units
+            if unit.tree is not None
+            and unit.path.is_relative_to(root)
+            and distribution_root(unit.path, facts=facts) == root
+            and not is_test_path(unit.path)
+            and not is_generated(unit.path, unit.source)
+            for name, _, is_string in _annotated_class_fields(
+                NodeIndex.shared(unit.tree) or NodeIndex(unit.tree), ImportIndex.from_tree(unit.tree)
+            )
+            if not is_string
+        )
+    return cache[root]
+
+
+def _compared_field_domains(
+    context: PythonFileContext, fields: dict[str, ast.AnnAssign], prior: set[tuple[int, int]]
+) -> dict[str, set[str]]:
+    domains: dict[str, set[str]] = {}
+    covered: set[str] = set()
+    for node in context.nodes(ast.Compare):
+        comparison = _literal_comparison(node)
+        if comparison is None or not isinstance(comparison.subject, ast.Attribute):
+            continue
+        subject = comparison.subject
+        field = fields.get(subject.attr)
+        if field is None or not isinstance(subject.ctx, ast.Load) or _foreign_field_receiver(subject, field, context):
+            continue
+        domains.setdefault(subject.attr, set()).update(comparison.literals)
+        if (node.lineno, node.col_offset + 1) in prior:
+            covered.add(subject.attr)
+    return {name: values for name, values in domains.items() if name not in covered}
+
+
+def _foreign_field_receiver(subject: ast.Attribute, field: ast.AnnAssign, context: PythonFileContext) -> bool:
+    if not isinstance(subject.value, ast.Name):
+        return False
+    receiver = subject.value
+    binding = context.static_resource_provenance.binding(receiver.id, receiver)
+    owner = context.parents.get(field)
+    match binding:
+        case ast.ClassDef():
+            return binding is not owner
+        case ast.alias():
+            return True
+        case ast.Name() if isinstance(declaration := context.parents.get(binding), ast.AnnAssign):
+            return _field_annotation_excludes_owner(declaration.annotation, owner, context)
+        case ast.arg(annotation=ast.expr() as annotation):
+            return _field_annotation_excludes_owner(annotation, owner, context)
+        case ast.arg():
+            parameters = context.parents.get(binding)
+            method = context.parents.get(parameters) if parameters is not None else None
+            declaring_class = context.parents.get(method) if method is not None else None
+            return (
+                receiver.id in _OWNED_ROOTS
+                and isinstance(declaring_class, ast.ClassDef)
+                and declaring_class is not owner
+            )
+        case _:
+            return False
+
+
+def _field_annotation_excludes_owner(annotation: ast.expr, owner: ast.AST | None, context: PythonFileContext) -> bool:
+    if not isinstance(owner, ast.ClassDef):
+        return True
+    members = [
+        item for item in context.annotation_semantics.transparent_members(annotation) if not _is_none_annotation(item)
+    ]
+    if len(members) != 1:
+        return True
+    member = members[0]
+    base = member.value if isinstance(member, ast.Subscript) else member
+    return not isinstance(base, ast.Name) or base.id != owner.name
 
 
 def _literal_return_diagnostics(context: PythonFileContext, code: str) -> list[Diagnostic]:
@@ -1075,9 +1262,10 @@ def _looks_like_enum_base_name(name: str) -> bool:
 
 def _cluster_fires(key: str, entry: _ClusterEntry) -> bool:
     _line, _col, _literals, eq_literals, _ne_literals, in_literals, closed = entry
-    if not closed or (not eq_literals and not in_literals):
-        return False
-    domain_literals = eq_literals | in_literals
+    return closed and _string_domain_fires(key, eq_literals | in_literals)
+
+
+def _string_domain_fires(key: str, domain_literals: set[str]) -> bool:
     enumerated = len(domain_literals)
     if enumerated < _MIN_CLUSTER_SIZE:
         return False
@@ -2194,26 +2382,34 @@ def _choice_binding_field(binding: str) -> str | None:
 
 
 def _extract_compare(node: ast.Compare) -> _ExtractedCompare | None:
+    comparison = _literal_comparison(node)
+    if comparison is not None and (key := _name_key(comparison.subject)) is not None:
+        return _ExtractedCompare(key, comparison.literals, comparison.operator)
+    return None
+
+
+def _literal_comparison(node: ast.Compare) -> _LiteralComparison | None:
     if len(node.ops) != 1 or len(node.comparators) != 1:
         return None
     op = node.ops[0]
     left, right = node.left, node.comparators[0]
     match op:
         case ast.Eq() | ast.NotEq():
-            return _extract_equality_compare(op, left, right)
+            operator = _EQ if isinstance(op, ast.Eq) else _NE
+            if (value := _str_const(right)) is not None:
+                return _LiteralComparison(left, [value], operator)
+            if (value := _str_const(left)) is not None:
+                return _LiteralComparison(right, [value], operator)
         case ast.In() | ast.NotIn():
-            key = _name_key(left)
-            if key is None:
-                return None
-            if not isinstance(right, (ast.Tuple, ast.List, ast.Set)) or not right.elts:
+            if not isinstance(right, ast.Tuple | ast.List | ast.Set) or not right.elts:
                 return None
             values: list[str] = []
-            for elt in right.elts:
-                value = _str_const(elt)
+            for element in right.elts:
+                value = _str_const(element)
                 if value is None:
                     return None
                 values.append(value)
-            return _ExtractedCompare(key, values, _MEMBERSHIP)
+            return _LiteralComparison(left, values, _MEMBERSHIP)
         case _:
             pass
     return None
@@ -2327,20 +2523,6 @@ def _is_optional_choice_union(annotation: ast.BinOp, raw_string_aliases: frozens
         and len(non_none) < len(members)
         and _is_choice_string_annotation(non_none[0], raw_string_aliases, imports)
     )
-
-
-def _extract_equality_compare(op: ast.Eq | ast.NotEq, left: ast.expr, right: ast.expr) -> _ExtractedCompare | None:
-    if _name_key(left) is not None and _str_const(right) is not None:
-        ref, lit = left, right
-    elif _str_const(left) is not None and _name_key(right) is not None:
-        ref, lit = right, left
-    else:
-        return None
-    key = _name_key(ref)
-    value = _str_const(lit)
-    if key is None or value is None:  # pragma: no cover — guarded above
-        return None
-    return _ExtractedCompare(key, [value], _EQ if isinstance(op, ast.Eq) else _NE)
 
 
 def _collect_enum_bindings(

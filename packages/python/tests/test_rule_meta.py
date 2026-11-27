@@ -45,6 +45,7 @@ _PUBLIC_MATCH_SEVERITIES: dict[tuple[str, str], Severity] = {
     ("prefer-match-type-dispatch", "reuse-or-construct-normalization"): Severity.WARNING,
     ("prefer-match-type-dispatch", "single-optional-update-match"): Severity.WARNING,
     ("prefer-match-type-dispatch", "single-type-checks"): Severity.WARNING,
+    ("prefer-str-enum", "compared-record-field"): Severity.WARNING,
 }
 
 _RENAMED_RULES = {
