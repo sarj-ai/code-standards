@@ -17,6 +17,7 @@ TESTER.run("iac-source-coupled-test", rule, {
     { filename: "/repo/policy.ts", code: `${FS_IMPORT} const source = readFileSync('main.tf', 'utf8'); expect(source).toContain('resource');` },
   ],
   invalid: [
+    { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} import path from 'node:path'; test('raw', () => { const source = readFileSync(path.join(ROOT, 'policy.tf'), 'utf8'); expect(source).toMatch(/resource/); });`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} test('raw', () => { const source = readFileSync('policy.tf', 'utf8'); expect(source).toMatch(/resource/); });`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} test('raw', () => { const source = readFileSync('policy.hcl', 'utf8'); expect(source).toMatch(/resource/); });`, errors: [{ messageId: "rawSourceOracle" }] },
     { filename: "/repo/policy.test.ts", code: `${FS_IMPORT} test('raw', () => { const source = readFileSync('policy.tfvars', 'utf8'); expect(source).toMatch(/resource/); });`, errors: [{ messageId: "rawSourceOracle" }] },

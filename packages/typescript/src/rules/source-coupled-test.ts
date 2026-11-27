@@ -7,7 +7,7 @@
 import { createSourceCoupledRule } from "./_create-source-coupled-rule.js";
 
 // Terraform JSON has a dedicated oracle owner; JSONC remains general source.
-const GENERAL_SOURCE_SUFFIX_RE = /\.(?:bash|sh|ya?ml|jsonc|toml|py|css|html|[cm]?[jt]s|[jt]sx)$|(?<!\.(?:tf|tftest))\.json$/iu;
+const GENERAL_SOURCE_SUFFIX_RE = /\.(?:astro|bash|sh|ya?ml|jsonc|toml|py|css|html|[cm]?[jt]s|[jt]sx)$|(?<!\.(?:tf|tftest))\.json$/iu;
 
 export default createSourceCoupledRule(
   "source-coupled-test",

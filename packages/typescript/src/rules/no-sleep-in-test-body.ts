@@ -40,14 +40,16 @@ function isNonzeroNumericLiteral(node: Node | undefined): boolean {
  * True when `node` is `new Promise((r) => setTimeout(r, n))` — including the
  * block-bodied `{ setTimeout(r, n); }` spelling.
  */
-function isPromiseSleep(node: ESTree.NewExpression): boolean {
+function promiseSleepRoot(node: ESTree.NewExpression): string | null {
   const executor = promiseExecutor(node);
   const body = executor?.body ?? null;
   const resolve = executor?.params[0];
-  if (body === null || executor?.params.length !== 1 || resolve?.type !== "Identifier" || resolve.name === "setTimeout") return false;
+  if (body === null || executor?.params.length !== 1 || resolve?.type !== "Identifier" || resolve.name === "setTimeout") return null;
   const timer = executorTimer(body);
-  return timer?.type === "CallExpression" && isTimedSetTimeout(timer) &&
-    timer.arguments[0]?.type === "Identifier" && timer.arguments[0].name === resolve.name;
+  if (timer?.type !== "CallExpression" || !isTimedSetTimeout(timer) ||
+      timer.arguments[0]?.type !== "Identifier" || timer.arguments[0].name !== resolve.name) return null;
+  const root = timerGlobalRoot(timer.callee);
+  return root === resolve.name ? null : root;
 }
 
 /** The inline executor function of `new Promise(executor)`, else null. */
@@ -65,11 +67,17 @@ function executorTimer(body: Node): Node | null {
   return statement?.type === "ExpressionStatement" ? statement.expression : null;
 }
 
+function timerGlobalRoot(node: Node): string | null {
+  const callee = unwrapExpression(node);
+  if (callee.type === "Identifier" && callee.name === "setTimeout") return callee.name;
+  if (callee.type !== "MemberExpression" || getPropertyName(callee) !== "setTimeout") return null;
+  const object = unwrapExpression(callee.object);
+  return object.type === "Identifier" && (object.name === "window" || object.name === "globalThis") ? object.name : null;
+}
+
 function isTimedSetTimeout(node: ESTree.CallExpression): boolean {
-  const unwrappedNodeCallee = unwrapExpression(node.callee);
   return (
-    unwrappedNodeCallee.type === "Identifier" &&
-    unwrappedNodeCallee.name === "setTimeout" &&
+    timerGlobalRoot(node.callee) !== null &&
     node.arguments.length >= 2 &&
     isNonzeroNumericLiteral(node.arguments[1])
   );
@@ -97,6 +105,10 @@ function nearestEnclosingFunction(node: Node): Node | null {
     }
   }
   return null;
+}
+
+function isPromiseSleep(node: ESTree.NewExpression): boolean {
+  return promiseSleepRoot(node) !== null;
 }
 
 /** True when the sleep itself controls the test body rather than serving as injected test data. */
@@ -169,10 +181,11 @@ export default defineRule({
         return undefined;
       },
       NewExpression(node: ESTree.NewExpression): void {
-        if (isPromiseSleep(node)) {
+        const root = promiseSleepRoot(node);
+        if (root !== null) {
           const scope = context.sourceCode.getScope(node);
           const constructor = findVariable(scope, "Promise");
-          const timer = findVariable(scope, "setTimeout");
+          const timer = findVariable(scope, root);
           if ((constructor?.defs.length ?? 0) > 0 || (timer?.defs.length ?? 0) > 0) return;
           report(node);
         }

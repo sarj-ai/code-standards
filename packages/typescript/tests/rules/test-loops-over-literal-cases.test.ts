@@ -7,6 +7,11 @@ const TEST_FILE = "/repo/src/parser.test.ts";
 
 RULE_TESTER.run("test-loops-over-literal-cases", rule, {
   valid: [
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';function suite(undefined:unknown){test('case',()=>{for(const value of [undefined,'x']) {expect(parse(value)).toBe(value);} });}" },
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{for(const value of [missing,'x']) {expect(parse(value)).toBe(value);} });" },
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{for(const value of [undefined,'x']) {expect(parse(value)).toBe(value);} finish();});" },
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{const parser=makeParser();for(const value of [undefined,'x']) {expect(parser(value)).toBe(value);} });" },
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',async(t)=>{for(const value of [undefined,'x']) {await t.test('value',()=>{expect(parse(value)).toBe(value);});} });" },
     { name: "binding ownership: loop-suite-alias", filename: TEST_FILE, code: "import {describe as test,expect} from 'vitest';test('case',()=>{for(const value of ['a','b']) {expect(parse(value)).toBe(value);} });" },
     { name: "binding ownership: loop-local-callback", filename: TEST_FILE, code: "function test(n:string,f:()=>unknown){return f;} test('case',()=>{for(const value of ['a','b']) {expect(parse(value)).toBe(value);} });" },
     { name: "binding ownership: loop-unrelated-assertion", filename: TEST_FILE, code: "import {test} from 'vitest';import {expect} from './model.js';test('case',()=>{for(const value of ['a','b']) {expect(parse(value)).toBe(value);} });" },
@@ -100,6 +105,8 @@ RULE_TESTER.run("test-loops-over-literal-cases", rule, {
     },
   ],
   invalid: [
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{for(const value of [undefined,'','x']) {expect(parse(value)).toBeNull();} });", errors: [{ messageId: "literalCaseLoop" }] },
+    { filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{for(const value of [{id:undefined},{id:''}]) {expect(parse(value)).toBeNull();} });", errors: [{ messageId: "literalCaseLoop" }] },
     { name: "binding ownership: loop-original", filename: TEST_FILE, code: "import {test,expect} from 'vitest';test('case',()=>{for(const value of ['a','b']) {expect(parse(value)).toBe(value);} });", errors: [{ messageId: "literalCaseLoop" }] },
     { name: "binding ownership: loop-test-alias", filename: TEST_FILE, code: "import {test as check,expect} from 'vitest';check('case',()=>{for(const value of ['a','b']) {expect(parse(value)).toBe(value);} });", errors: [{ messageId: "literalCaseLoop" }] },
     { name: "binding ownership: loop-assertion-alias", filename: TEST_FILE, code: "import {test,expect as verify} from 'vitest';test('case',()=>{for(const value of ['a','b']) {verify(parse(value)).toBe(value);} });", errors: [{ messageId: "literalCaseLoop" }] },

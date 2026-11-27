@@ -218,7 +218,14 @@ export function createSourceCoupledRule(name: string, summary: string, sourceSuf
       const derivedSourcePath = (current: ESTree.CallExpression | ESTree.NewExpression): boolean => {
         const callee = unwrapExpression(current.callee);
         const first = current.arguments[0];
-        if (first === undefined || first.type === "SpreadElement" || callee.type !== "Identifier") return false;
+        if (first === undefined || first.type === "SpreadElement") return false;
+        const memberBuilder = current.type === "CallExpression" ? memberPathBuilder(callee) : null;
+        if (current.type === "CallExpression" && memberBuilder !== null) {
+          if (temporaryDescendant(current, memberBuilder, 0, true)) return false;
+          const suffix = staticPathSuffix(current.arguments, memberBuilder);
+          return suffix !== null && sourcePathValue(suffix);
+        }
+        if (callee.type !== "Identifier") return false;
         const pathBuilder = current.type === "CallExpression" ? nativePathBuilder(callee) : null;
         if (current.type === "CallExpression" && pathBuilder !== null) {
           if (temporaryDescendant(current, pathBuilder)) return false;
@@ -239,6 +246,20 @@ export function createSourceCoupledRule(name: string, summary: string, sourceSuf
         const imported = nativeImportedName(node, PATH_MODULES);
         return imported === "join" || imported === "resolve" ? imported : null;
       };
+      const memberPathBuilder = (node: Node): "join" | "resolve" | null => {
+        const callee = unwrapExpression(node);
+        if (callee.type !== "MemberExpression" || callee.computed || callee.optional) return null;
+        const property = getPropertyName(callee);
+        if (property !== "join" && property !== "resolve") return null;
+        const object = unwrapExpression(callee.object);
+        if (object.type !== "Identifier") return null;
+        const binding = bindingOf(object);
+        return binding !== null && referenceStable(binding) && binding.defs.some((definition) => {
+          const specifier = definition.node;
+          return (specifier.type === "ImportDefaultSpecifier" || specifier.type === "ImportNamespaceSpecifier") &&
+            specifier.parent.type === "ImportDeclaration" && PATH_MODULES.has(specifier.parent.source.value);
+        }) ? property : null;
+      };
       const nativeImportedName = (node: Node, modules: ReadonlySet<string>): string | null => {
         const binding = bindingOf(node);
         if (binding === null || !referenceStable(binding)) return null;
@@ -258,24 +279,30 @@ export function createSourceCoupledRule(name: string, summary: string, sourceSuf
         const definition = binding.defs[0]?.node;
         return definition?.type === "VariableDeclarator" ? definition.init : null;
       };
-      const temporaryDirectory = (node: Node, depth = 0): boolean => {
+      const temporaryDirectory = (node: Node, depth = 0, memberForms = false): boolean => {
         if (depth > 8) return false;
         const current = unwrap(node);
         if (current.type === "Identifier") {
           const initializer = stableInitializer(current);
-          return initializer !== null && temporaryDirectory(initializer, depth + 1);
+          return initializer !== null && temporaryDirectory(initializer, depth + 1, memberForms);
         }
         if (current.type !== "CallExpression") return false;
         const callee = unwrap(current.callee);
+        if (memberForms && callee.type === "MemberExpression") {
+          const builder = memberPathBuilder(callee);
+          if (builder !== null) return temporaryDescendant(current, builder, depth + 1, true);
+          const object = unwrapExpression(callee.object);
+          return TEMP_DIRECTORY_FACTORIES.has(getPropertyName(callee) ?? "") && object.type === "Identifier" && visible("fsObjects", object);
+        }
         if (callee.type !== "Identifier") return false;
         if (TEMP_DIRECTORY_FACTORIES.has(nativeImportedName(callee, FS_MODULES) ?? "")) return true;
         const builder = nativePathBuilder(callee);
-        return builder !== null && temporaryDescendant(current, builder, depth + 1);
+        return builder !== null && temporaryDescendant(current, builder, depth + 1, memberForms);
       };
-      const temporaryDescendant = (node: ESTree.CallExpression, builder: "join" | "resolve", depth = 0): boolean => {
+      const temporaryDescendant = (node: ESTree.CallExpression, builder: "join" | "resolve", depth = 0, memberForms = false): boolean => {
         if (depth > 8) return false;
         const [directory, ...segments] = node.arguments;
-        if (directory === undefined || directory.type === "SpreadElement" || !temporaryDirectory(directory, depth)) return false;
+        if (directory === undefined || directory.type === "SpreadElement" || !temporaryDirectory(directory, depth, memberForms)) return false;
         let relativeDepth = 0;
         for (const segment of segments) {
           if (segment.type === "SpreadElement") return false;

@@ -22,6 +22,13 @@ const TEST_FILE = "/repo/src/worker.test.ts";
 
 RULE_TESTER.run("no-sleep-in-test-body", rule, {
   valid: [
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>window.setTimeout(resolve,0));});" },
+    { filename: TEST_FILE, code: "const window = fakeWindow; test('case',async()=>{await new Promise(resolve=>window.setTimeout(resolve,200));});" },
+    { filename: TEST_FILE, code: "const globalThis = fakeWindow; test('case',async()=>{await new Promise(resolve=>globalThis.setTimeout(resolve,200));});" },
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise(window=>window.setTimeout(window,200));});" },
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>clock.setTimeout(resolve,200));});" },
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>{start(resolve); window.setTimeout(resolve,200);});});" },
+    { filename: TEST_FILE, code: "test('case',()=>{window.setTimeout(work,200);});" },
     ...([
       ["fixture value factory is not a test registration", "import {test as base} from 'vitest'; const fixtureTest = base.extend('latencyFake', async () => { await sleep(50); });"],
       ["fixture timing fake remains nested", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest('timeout', async () => { const fake = async () => { await sleep(50); }; await consume(fake); });"],
@@ -142,6 +149,8 @@ RULE_TESTER.run("no-sleep-in-test-body", rule, {
     },
   ],
   invalid: [
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise((resolve)=>{window.setTimeout(resolve,200);});});", errors: [{ messageId: "noSleepInTestBody" }] },
+    { filename: TEST_FILE, code: "test('case',async()=>{await new Promise(resolve=>globalThis.setTimeout(resolve,5));});", errors: [{ messageId: "noSleepInTestBody" }] },
     ...([
       ["fixture test fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend({port: 3000}); fixtureTest('ready', async () => { await sleep(50); });"],
       ["fixture-aware beforeEach fixed sleep", "import {test as base} from 'vitest'; const fixtureTest = base.extend('port', 3000); fixtureTest.beforeEach(async () => { await sleep(50); });"],
