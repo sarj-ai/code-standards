@@ -3,6 +3,7 @@ enabled_rules = [
   "repository/artifacts/makefile-growth",
   "repository/artifacts/untyped-javascript",
   "repository/artifacts/local-residue",
+  "repository/documentation/added-markdown",
   "repository/documentation/generated-sources",
   "repository/documentation/local-links",
   "repository/documentation/make-targets",
@@ -127,17 +128,6 @@ kind = "vendor"
 reason = "Selected upstream rule bundle; build-upstream.ts verifies its source-lock and content hashes."
 
 [documentation]
-# Canonical harness entrypoints; other new pages retain the zero-page default.
-addition_exemptions = [
-  ".agents/skills/100-passes/SKILL.md",
-  ".agents/skills/audit-protocol/SKILL.md",
-  ".agents/skills/lint-rule-generator/SKILL.md",
-  ".agents/skills/test-value/SKILL.md",
-  ".claude/skills/100-passes/SKILL.md",
-  ".claude/skills/audit-protocol/SKILL.md",
-  ".claude/skills/lint-rule-generator/SKILL.md",
-  ".claude/skills/test-value/SKILL.md",
-]
 entrypoints = ["README.md"]
 
 [[documentation.generated]]
