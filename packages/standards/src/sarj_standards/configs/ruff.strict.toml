@@ -252,7 +252,7 @@ warns-extend-require-match-for = [
 ]
 
 [lint.flake8-tidy-imports.banned-api]
-# TID251 owns qualified builtin access and imports. SARJ499/557 cover bare
+# TID251 owns qualified builtin access and imports. SARJ557 covers bare
 # references that Ruff's import-oriented banned-api check does not resolve.
 "builtins.locals".msg = "Pass local state explicitly in typed variables or data structures."
 "builtins.globals".msg = "Pass dependencies explicitly instead of inspecting or mutating the module namespace."

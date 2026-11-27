@@ -124,7 +124,7 @@ def test_native_null_clean_report_is_complete(tmp_path: Path) -> None:
 
 
 @pytest.mark.skipif(
-    not hasattr(  # sarj-noqa: SARJ499 -- Run the FIFO safety test only when the native OS provides named pipes.
+    not hasattr(  # sarj-noqa: SARJ557 -- Run the FIFO safety test only when the native OS provides named pipes.
         os, "mkfifo"
     ),
     reason="named pipes require POSIX",

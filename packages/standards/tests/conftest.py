@@ -47,7 +47,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
     terminal = config.pluginmanager.get_plugin("terminalreporter")
     if (
         not isinstance(terminal, pytest.TerminalReporter)
-        or hasattr(  # sarj-noqa: SARJ499 -- pytest-xdist adds workerinput only to worker configurations; preserve summary ownership.
+        or hasattr(  # sarj-noqa: SARJ557 -- pytest-xdist adds workerinput only to worker configurations; preserve summary ownership.
             config, "workerinput"
         )
     ):

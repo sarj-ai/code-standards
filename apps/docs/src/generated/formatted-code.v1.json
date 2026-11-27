@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "dfaec647f903ed325377bbd505107dc35940754adbca65f94958fdade080f6e3",
-  "cliSha256": "ead8f4fc2f6cc1007f5a063e868bda733656d517afbbcf28726f38d9e9d1f548",
+  "catalogSha256": "eefd25cb0d657533e551e9177c7291551f61a5f56d5ce47b6bd8c9ae902b22f2",
+  "cliSha256": "6fc6b92cc7719ecc4a6e6792082f024d6b8cc297d328cab5cbe06d718bffcc31",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -14654,6 +14654,36 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "A string field name hides the object contract"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "def model_name(settings: object) -> str:\n    return settings.model if hasattr(settings, \"model\") else \"default\"\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "hasattr-probe",
+          "outcome": "reject",
+          "scenarioId": "hasattr",
+          "title": "A hasattr probe hides a loose type"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "service/agent.py",
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass LLMSettings:\n    model: str\n\n\ndef model_name(settings: LLMSettings) -> str:\n    return settings.model\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "service/agent.py",
+          "id": "typed-access",
+          "outcome": "accept",
+          "scenarioId": "hasattr",
+          "title": "A typed parameter states which attributes exist"
         }
       ],
       "optionsSchemaSource": null
@@ -15247,41 +15277,6 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Specific module contains one public definition"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:no-hasattr": {
-      "examples": [
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "service/agent.py",
-              "source": "def model_name(settings: object) -> str:\n    return settings.model if hasattr(settings, \"model\") else \"default\"\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service/agent.py",
-          "id": "hasattr-probe",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "A hasattr probe hides a loose type"
-        },
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "service/agent.py",
-              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass LLMSettings:\n    model: str\n\n\ndef model_name(settings: LLMSettings) -> str:\n    return settings.model\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "service/agent.py",
-          "id": "typed-access",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "A typed parameter states which attributes exist"
         }
       ],
       "optionsSchemaSource": null

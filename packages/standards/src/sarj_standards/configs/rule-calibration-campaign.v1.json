@@ -2949,14 +2949,6 @@
       "outcome": "Keep the rule warning-only without autofix. Storage wrappers and neutral key names stay in review."
     },
     {
-      "task": "rule-audit/python/no-hasattr",
-      "family": "python",
-      "ruleId": "no-hasattr",
-      "state": "pending",
-      "evidence": "The earlier warning survey documented optional-dependency and platform capability probes. The explicitly requested strict policy now includes authored tests, support modules and dunder/module probes; strengthened controls cover shadowing, simple aliases and delegation to native B004/TID251. Shared strict-runtime-policy calibration used native isolated immutable corpora: 154 labeled cases yielded 115 TP, 39 TN and zero FP/FN or native/custom overlaps; two deliberate parser failures were recorded separately. All policy references across 1,156 maintained source files were inspected. Three cold runs with three warm repetitions each on a fixed unbiased 200-file sample and redacted aggregate results are recorded in packages/python/benchmarks/python-runtime-bans.json. These bundle-level measurements do not establish broad field recall for each rule; independent field calibration remains pending.",
-      "outcome": "SARJ499: Enforce the explicit user-requested ERROR policy without autofix. Replace dynamic attribute probes with declared contracts where possible; legitimate runtime platform/compatibility boundaries retain exact reasoned local exceptions. The previous blanket test/module/dunder exemptions are removed. Full campaign completion is not claimed."
-    },
-    {
       "task": "rule-audit/iac/no-plaintext-secret-env",
       "family": "iac",
       "ruleId": "no-plaintext-secret-env",

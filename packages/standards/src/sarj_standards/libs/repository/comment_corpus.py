@@ -144,7 +144,7 @@ type _MarkdownState = _MarkdownText | _MarkdownFence | _OpenHtmlComment
 def _require_supported_platform() -> None:
     if (
         os.name == "nt"
-        or not hasattr(  # sarj-noqa: SARJ499 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
+        or not hasattr(  # sarj-noqa: SARJ557 -- Probe optional descriptor-relative OS capabilities while preserving fail-closed file handling.
             os, "fwalk"
         )
     ):

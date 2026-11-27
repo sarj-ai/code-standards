@@ -13,6 +13,16 @@ def _lines(source: str) -> list[int]:
     return [finding.line for finding in NoDynamicBuiltins().check(Path("service/reader.py"), source)]
 
 
+def _hasattr_lines(source: str, path: str = "service/agent.py") -> list[int]:
+    return [
+        finding.line
+        for finding in NoDynamicBuiltins().check(Path(path), source)
+        if finding.message
+        == "hasattr hides whether this attribute can be missing. Narrow the type with isinstance, a Protocol, "
+        "or a typed wrapper instead."
+    ]
+
+
 def test_documented_examples() -> None:
     verify_native_rule(NoDynamicBuiltins, analyze)
 
@@ -175,7 +185,7 @@ def test_defaults_to_error_severity() -> None:
     ("rule_id", "code", "source"),
     [
         (RuleId("no-dynamic-builtins"), "SARJ557", "value = locals()"),
-        (RuleId("no-hasattr"), "SARJ499", "value = hasattr(settings, 'name')"),
+        (RuleId("no-dynamic-builtins"), "SARJ557", "value = hasattr(settings, 'name')"),
         (RuleId("no-sys-path-mutation"), "SARJ558", "import sys; sys.path.append('/opt/application')"),
         (RuleId("no-shared-mutable-default"), "SARJ559", "def read(values: object = []): return values"),
     ],
@@ -197,3 +207,98 @@ def test_analyzer_requires_the_matching_local_suppression(
         encoding="utf-8",
     )
     assert analyze([rule_id], [path], root=tmp_path) == []
+
+
+def test_reports_each_hasattr_call() -> None:
+    source = "def ready(buffer):\n    return hasattr(buffer, 'rate') and hasattr(buffer, 'samples')\n"
+    assert _hasattr_lines(source) == [2, 2]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("import os\n\nPG = hasattr(os, 'killpg')\n", id="stdlib-module-probe"),
+        pytest.param(
+            "import logging\n\nif not hasattr(logging.Logger, 'trace'):\n    pass\n", id="module-attribute-chain"
+        ),
+        pytest.param(
+            "import torch.nn.functional as F\n\nOK = hasattr(F, 'scaled_dot_product_attention')\n", id="aliased-module"
+        ),
+        pytest.param("def is_dc(cls):\n    return hasattr(cls, '__dataclass_fields__')\n", id="dunder-protocol-probe"),
+    ],
+)
+def test_rejects_runtime_feature_detection(source: str) -> None:
+    assert len(_hasattr_lines(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("def hasattr(value, name):\n    return True\n\nhasattr(object(), 'x')\n", id="shadowed-builtin"),
+        pytest.param("from compat import hasattr\n\nhasattr(object(), 'x')\n", id="imported-name"),
+        pytest.param("value = getattr(settings, 'model', None)\n", id="getattr"),
+        pytest.param("checker.hasattr(value, 'x')\n", id="method-named-hasattr"),
+        pytest.param("hasattr(\n", id="syntax-error"),
+    ],
+)
+def test_allows_non_builtin_or_other_calls(source: str) -> None:
+    assert _hasattr_lines(source) == []
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        pytest.param("tests/test_agent.py", id="test-module"),
+        pytest.param("service/conftest.py", id="conftest"),
+        pytest.param("tests/fakes/fake_agent.py", id="test-support"),
+    ],
+)
+def test_enforces_test_code(path: str) -> None:
+    assert _hasattr_lines("hasattr(value, 'x')\n", path=path) == [1]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "callback = hasattr\ncallback(value, name)\n",
+        "import builtins as native\nnamespace = native\nnamespace.hasattr(value, name)\n",
+        "def checker(hasattr):\n    return hasattr(value, name)\nhasattr(value, name)\n",
+    ],
+)
+def test_rejects_reference_escapes_without_cross_scope_shadowing(source: str) -> None:
+    assert len(_hasattr_lines(source)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "hasattr(value, '__call__')\n",
+        "hasattr(*values, '__call__')\n",
+        "import builtins\nbuiltins.hasattr(value, name)\n",
+        "from builtins import hasattr as probe\nprobe(value, name)\n",
+    ],
+)
+def test_preserves_native_ruff_ownership(source: str) -> None:
+    assert _hasattr_lines(source) == []
+
+
+def test_hasattr_keeps_its_message_under_the_surviving_error_code() -> None:
+    findings = NoDynamicBuiltins().check(
+        Path("service/agent.py"), "ready = hasattr(buffer, 'rate')\nvalue = getattr(buffer, name)\n"
+    )
+    assert len(findings) == 2
+    assert [finding.line for finding in findings] == [1, 2]
+    assert findings[0].code == "SARJ557"
+    assert findings[0].severity is Severity.ERROR
+    assert findings[0].message == (
+        "hasattr hides whether this attribute can be missing. Narrow the type with isinstance, a Protocol, "
+        "or a typed wrapper instead."
+    )
+    assert findings[1].message == (
+        "Do not use the builtin getattr. Use explicit typed state, normal imports, or declared attribute access; "
+        "a required runtime boundary needs an explained local suppression."
+    )
+
+
+def test_generated_hasattr_probes_remain_allowed() -> None:
+    assert _hasattr_lines("# @generated\nhasattr(value, 'x')\n") == []

@@ -22,7 +22,19 @@ if TYPE_CHECKING:
 
 
 _BANNED_NAMES = frozenset(
-    {"locals", "globals", "compile", "__import__", "delattr", "getattr", "setattr", "exec", "eval", "breakpoint"}
+    {
+        "locals",
+        "globals",
+        "compile",
+        "__import__",
+        "delattr",
+        "getattr",
+        "hasattr",
+        "setattr",
+        "exec",
+        "eval",
+        "breakpoint",
+    }
 )
 
 
@@ -32,6 +44,7 @@ class NoDynamicBuiltins(Rule):
     code = "SARJ557"
     documentation = RuleDocumentation(
         default_level=Severity.ERROR,
+        aliases=("no-hasattr",),
         summary="Use explicit typed state instead of dynamic Python builtin access.",
         rationale=(
             "Dynamic namespace inspection, source compilation, and string-based attribute reads and writes hide dependencies "
@@ -46,6 +59,7 @@ class NoDynamicBuiltins(Rule):
         autofix=AutofixPolicy.NONE,
         limitations=(
             "Ruff covers eval, exec, debugger calls, constant attribute operations, and qualified or imported banned APIs. This rule closes bare-name and simple module-alias gaps.",
+            "Unshadowed builtin references and simple builtins-module aliases are reported, including tests, module probes and dunder probes.",
             "Locally shadowed names and unrelated methods are accepted. Arbitrary dictionary/reflection lookups and complex rebinding are not reconstructed.",
         ),
         examples=(
@@ -76,6 +90,38 @@ class NoDynamicBuiltins(Rule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="hasattr-probe",
+                scenario="hasattr",
+                title="A hasattr probe hides a loose type",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service/agent.py",
+                        "def model_name(settings: object) -> str:\n"
+                        "    return settings.model if hasattr(settings, 'model') else 'default'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service/agent.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-access",
+                scenario="hasattr",
+                title="A typed parameter states which attributes exist",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "service/agent.py",
+                        "from dataclasses import dataclass\n\n@dataclass\nclass LLMSettings:\n    model: str\n\n"
+                        "def model_name(settings: LLMSettings) -> str:\n    return settings.model\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("service/agent.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -94,7 +140,10 @@ class NoDynamicBuiltins(Rule):
                 reference.node.lineno,
                 reference.node.col_offset + 1,
                 self.code,
-                f"Do not use the builtin {reference.name}. Use explicit typed state, normal imports, or declared attribute access; a required runtime boundary needs an explained local suppression.",
+                "hasattr hides whether this attribute can be missing. Narrow the type with isinstance, a Protocol, "
+                "or a typed wrapper instead."
+                if reference.name == "hasattr"
+                else f"Do not use the builtin {reference.name}. Use explicit typed state, normal imports, or declared attribute access; a required runtime boundary needs an explained local suppression.",
             )
             for reference in RuntimeNames(context).banned_references(_BANNED_NAMES)
         ]

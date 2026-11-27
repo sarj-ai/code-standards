@@ -241,7 +241,7 @@ def _is_rule_class(value: object) -> TypeIs[type[Rule]]:
             ),
             str,
         )
-        and hasattr(  # sarj-noqa: SARJ499 -- Validate dynamically imported rule registries before trusting plugin metadata.
+        and hasattr(  # sarj-noqa: SARJ557 -- Validate dynamically imported rule registries before trusting plugin metadata.
             value, "documentation"
         )
     )
