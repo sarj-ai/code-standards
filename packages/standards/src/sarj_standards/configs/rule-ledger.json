@@ -92,6 +92,7 @@
       "no-generic-json-parser",
       "no-generic-single-export-module",
       "no-hidden-constructor-fallback",
+      "no-http-exception-in-services",
       "no-impossible-pydantic-field-bounds",
       "no-injected-dependency-close",
       "no-injected-module-loader",
@@ -781,7 +782,8 @@
       "SARJ606",
       "SARJ607",
       "SARJ608",
-      "SARJ609"
+      "SARJ609",
+      "SARJ610"
     ],
     "sql": [
       "SARJ101",

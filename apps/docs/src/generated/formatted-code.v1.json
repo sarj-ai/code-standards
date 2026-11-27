@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "faed75a344b803fe00f63ffc8e709ac40980f6a069507a1dd417afdcc3280fbc",
-  "cliSha256": "4adf56975e5f7534edbbf65cc184c9ce729206cae12338f7718d9becbb8638a4",
+  "catalogSha256": "d40314357e77cca284483d8f9f3a6d59524f1426cb8978d1da42e1b5e505fc34",
+  "cliSha256": "fd9dc39ee91f944982ff49439adc9f87a1d8ff1a1a1b67595f2b59a9ff264cfb",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -15286,6 +15286,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Constructor requires its dependency"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:no-http-exception-in-services": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/services/orders.py",
+              "source": "class OrderShippedError(Exception):\n    pass\n\n\ndef cancel(order) -> None:\n    if order.shipped:\n        raise OrderShippedError\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/services/orders.py",
+          "id": "service-raises-domain-exception",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A service raises a domain exception"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/services/orders.py",
+              "source": "from fastapi import HTTPException\n\n\ndef cancel(order) -> None:\n    if order.shipped:\n        raise HTTPException(status_code=409, detail=\"order_shipped\")\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/services/orders.py",
+          "id": "service-raises-http-exception",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A service raises an HTTP error"
         }
       ],
       "optionsSchemaSource": null
