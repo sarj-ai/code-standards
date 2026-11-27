@@ -3919,6 +3919,14 @@
       "state": "pending",
       "evidence": "Pydantic 2.14.4 confirms that lax validation coerces an integer string, class keywords override the config dictionary, and the rightmost base with a strict setting wins. Focused tests and executable examples cover config forms, inheritance, import aliases, uncertainty, test and generated exclusions, and exact suppressions.",
       "outcome": "Ship at WARNING without autofix. Strict Python-mode validation requires UUID and datetime instances, while strict JSON-mode validation accepts their string representations. Broader consumer calibration remains pending before error promotion."
+    },
+    {
+      "task": "rule-audit/python/no-http-exception-in-services",
+      "family": "python",
+      "ruleId": "no-http-exception-in-services",
+      "state": "pending",
+      "evidence": "A private consumer snapshot of 3,147 Python files, 218 of them service modules, produced 0 findings. Replaying every historical version of a service module that mentions HTTPException (7 versions) yielded findings in 2 modules, both inspected as true positives later moved behind router mapping, with zero inspected false positives; a third instance was caught in review before merge. This repository's 1,364-file corpus and two other repositories contain no service modules and produced 0 findings. None of 258 open consumer pull requests adds a match. Modules outside a `services` directory return before the syntax tree is read.",
+      "outcome": "Ship at WARNING without autofix. Report a raise of FastAPI or Starlette HTTPException in non-test modules below a `services` directory. Subclasses, re-raised variables and handlers stay outside the detector. Field calibration beyond one consumer remains pending."
     }
   ]
 }

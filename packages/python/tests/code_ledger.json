@@ -395,5 +395,6 @@
   "SARJ606": "prefer-direct-iteration",
   "SARJ607": "prefer-frozen-dataclass",
   "SARJ608": "no-nominal-rebrand",
-  "SARJ609": "require-strict-pydantic-model"
+  "SARJ609": "require-strict-pydantic-model",
+  "SARJ610": "no-http-exception-in-services"
 }

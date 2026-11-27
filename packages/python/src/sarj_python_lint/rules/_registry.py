@@ -251,6 +251,7 @@ from sarj_python_lint.rules.no_exception_text_in_500_detail import NoExceptionTe
 from sarj_python_lint.rules.no_failure_conflated_with_absence import NoFailureConflatedWithAbsence
 from sarj_python_lint.rules.no_folded_bad_request_not_found import NoFoldedBadRequestNotFound
 from sarj_python_lint.rules.no_gather_first_exception_reraise import NoGatherFirstExceptionReraise
+from sarj_python_lint.rules.no_http_exception_in_services import NoHttpExceptionInServices
 from sarj_python_lint.rules.no_impossible_pydantic_field_bounds import NoImpossiblePydanticFieldBounds
 from sarj_python_lint.rules.no_injected_dependency_close import NoInjectedDependencyClose
 from sarj_python_lint.rules.no_invalid_pydantic_bypass import NoInvalidPydanticBypass
@@ -327,6 +328,7 @@ from sarj_python_lint.rules.test_without_explicit_oracle import NoExplicitTestOr
 
 _AUTHORING_REGISTRY: Mapping[str, type[Rule]] = MappingProxyType(
     {
+        NoHttpExceptionInServices.id: NoHttpExceptionInServices,
         RequireStrictPydanticModel.id: RequireStrictPydanticModel,
         NoNominalRebrand.id: NoNominalRebrand,
         NoFailureConflatedWithAbsence.id: NoFailureConflatedWithAbsence,
