@@ -106,7 +106,6 @@ import noStringConcatInLoop from "./rules/no-string-concat-in-loop.js";
 import noTautologicalExpect from "./rules/no-tautological-expect.js";
 import noTestComments from "./rules/no-test-comments.js";
 import noTrailingValueNarration from "./rules/no-trailing-value-narration.js";
-import noTypeMemberCommentWall from "./rules/no-type-member-comment-wall.js";
 import noTypedDocSections from "./rules/no-typed-doc-sections.js";
 import noUnionInComment from "./rules/no-union-in-comment.js";
 import noUnlocalizedJsxAttributes from "./rules/no-unlocalized-jsx-attributes.js";
@@ -289,7 +288,6 @@ const RULES = {
   "no-tautological-expect": noTautologicalExpect,
   "no-test-comments": noTestComments,
   "no-trailing-value-narration": noTrailingValueNarration,
-  "no-type-member-comment-wall": noTypeMemberCommentWall,
   "no-typed-doc-sections": noTypedDocSections,
   "no-union-in-comment": noUnionInComment,
   "no-unlocalized-jsx-attributes": noUnlocalizedJsxAttributes,

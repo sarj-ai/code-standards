@@ -954,15 +954,6 @@ const RULES = {
   "@sarj/no-tautological-expect": "error",
   "@sarj/no-test-comments": ["error", {}],
   "@sarj/no-trailing-value-narration": "error",
-  "@sarj/no-type-member-comment-wall": [
-    "error",
-    {
-      "minCommentedMembers": 3,
-      "minCommentedRatio": 0.6,
-      "minRestatedRatio": 0.75,
-      "maxNovelWords": 1
-    }
-  ],
   "@sarj/no-typed-doc-sections": "error",
   "@sarj/no-union-in-comment": "error",
   "@sarj/no-unlocalized-jsx-attributes": ["error", {"enabled": false}],

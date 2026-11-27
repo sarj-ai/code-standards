@@ -133,7 +133,7 @@ it("removing member commentary preserves fields, types and optionality", () => {
       type: ts.isPropertySignature(member) ? member.type?.getText(tree) : undefined,
     }));
   };
-  expect(fields(focusSource("no-type-member-comment-wall", "uncommented-members"))).toEqual(fields(focusSource("no-type-member-comment-wall", "restated-type-members")));
+  expect(fields(focusSource("no-declaration-comment-wall", "uncommented-type-members"))).toEqual(fields(focusSource("no-declaration-comment-wall", "restated-type-members")));
 });
 
 it("the documented never helper makes an added union member a compiler error", () => {

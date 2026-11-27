@@ -30,6 +30,16 @@ import {
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isStoryFile, isTestFile } from "../utils/paths.js";
 
+const BEHAVIORAL_RELATION_RE = /\b(?:not|no|never|only|must|shall|should|may|can|could|will|would|required|optional|if|unless|when|before|after|until|while|without|instead|true|false|null|undefined)\b|[<>=!]/iu;
+
+type NamedMember = ESTree.TSPropertySignature | ESTree.TSMethodSignature;
+
+interface TypeMemberTally {
+  readonly commented: number;
+  readonly restated: number;
+  readonly removals: readonly CommentRemoval[];
+}
+
 /** A member this rule can judge: something with a name and a source range. */
 interface Judged {
   readonly node: Node;
@@ -63,11 +73,13 @@ export default defineRule({
     fixable: "code",
     docs: {
       description:
-        "Flag an enum body or class body whose member comments mostly re-spell the members' own names.",
+        "Flag an enum body, class body, or object type whose member comments mostly re-spell the members' own names and types.",
       url: docsUrl("no-declaration-comment-wall"),
     },
     schema: [WALL_SCHEMA],
     messages: {
+      typeMemberCommentWall:
+        "{{restated}} of this type's {{commented}} member comments appear to repeat names and types — review them for removal or clearer naming. Keep constraints and rationale.",
       commentWall:
         "{{restated}} of this declaration's {{commented}} member comments only re-spell member names — delete them; if a row still needs narration, give the member a clearer name. Keep constraints, lifecycle, and rationale.",
     },
@@ -75,6 +87,8 @@ export default defineRule({
   createOnce(context) {
     let options: WallOptions = WALL_DEFAULTS;
     let sourceCode: SourceCode;
+    let declarationsApply = false;
+    let typeMembersApply = false;
     // Comments indexed by the line they end on (a leading comment) and the line they start on (a trailing one).
     let endingOn = new Map<number, Comment>();
     let startingOn = new Map<number, Comment>();
@@ -166,12 +180,84 @@ export default defineRule({
       return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
     }
 
+    function checkTypeMembers(node: ESTree.TSInterfaceBody | ESTree.TSTypeLiteral): void {
+      const members: readonly Node[] = node.type === "TSInterfaceBody" ? node.body : node.members;
+      const named = members.flatMap((member) =>
+        (member.type === "TSPropertySignature" || member.type === "TSMethodSignature") && !member.computed ? [member] : []);
+      if (named.length === 0) return;
+      const { commented, restated, removals } = tallyTypeMembers(named);
+      if (!isWall(named.length, commented, restated, options)) return;
+      const fix: FixFn = (fixer) => {
+        const fixes: Fix[] = [];
+        for (const removal of removals) {
+          const endings = commentLineEndings(sourceCode.text, removal);
+          if (endings === null) return null;
+          fixes.push(fixer.replaceTextRange([...removal.range], endings));
+        }
+        return fixes;
+      };
+      context.report({
+        node,
+        loc: {
+          start: node.loc.start,
+          end: { line: node.loc.start.line, column: node.loc.start.column + 1 },
+        },
+        messageId: "typeMemberCommentWall",
+        data: { restated: String(restated), commented: String(commented) },
+        ...(removals.length > 0 && { fix }),
+      });
+    }
+
+    /** Count the members' own comments, and those that only re-spell the member. */
+    function tallyTypeMembers(named: readonly NamedMember[]): TypeMemberTally {
+      const documented = named.map((member) => ({ member, comment: documentingComment(member) }));
+      let commented = 0;
+      let restated = 0;
+      const removals: CommentRemoval[] = [];
+      // A comment documents at most one member.
+      const claimed = new Set<Comment>();
+      for (const [index, { member, comment }] of documented.entries()) {
+        if (comment === undefined || claimed.has(comment)) continue;
+        const next = documented[index + 1];
+        if (isTypeMemberGroupLabel(comment, member, next !== undefined && next.comment === undefined)) continue;
+        claimed.add(comment);
+        commented += 1;
+        if (restatesTypeMember(comment, member)) {
+          restated += 1;
+          const removal = exactMemberCommentRemovalRange(sourceCode.text, comment, member.key);
+          if (removal !== null) removals.push(removal);
+        }
+      }
+      return { commented, restated, removals };
+    }
+
+    function restatesTypeMember(comment: Comment, member: NamedMember): boolean {
+      const body = commentBody(comment);
+      return body.length > 0 && !hasJsDocTag(comment) && !carriesValue(body) && !isTagsOnly(body) && !BEHAVIORAL_RELATION_RE.test(body) &&
+        novelWords(body, knownTokens(sourceCode.getText(member))) <= options.maxNovelWords;
+    }
+
+    function isTypeMemberGroupLabel(comment: Comment, member: NamedMember, headsRun: boolean): boolean {
+      if (comment.loc.end.line >= member.loc.start.line) return false;
+      const body = commentBody(comment);
+      if (!BARE_LABEL_RE.test(body)) return false;
+      if (labelStems(body) === labelStems(sourceCode.getText(member.key))) return false;
+      const lineAbove = sourceCode.lines[comment.loc.start.line - 2];
+      return headsRun || (lineAbove !== undefined && lineAbove.trim().length === 0);
+    }
+
     return {
       before() {
         sourceCode = context.sourceCode;
         const file = { filename: context.filename, cwd: context.cwd };
         // Generated or vendored, a test fixture, or a demo story: member comments there are output rather than commentary.
-        if (isGeneratedFile(file, sourceCode.text) || isTestFile(file) || isStoryFile(file)) return false;
+        declarationsApply = !(isGeneratedFile(file, sourceCode.text) || isTestFile(file) || isStoryFile(file));
+        typeMembersApply = !(
+          isGeneratedFile(file, sourceCode.text, ["externalTree"]) ||
+          isTestFile(file, ["fixtureTree"]) ||
+          isStoryFile(file, ["storyTree"])
+        );
+        if (!declarationsApply && !typeMembersApply) return false;
         const [provided] = context.options as unknown as readonly [Partial<WallOptions>?];
         options = { ...WALL_DEFAULTS, ...provided };
         endingOn = new Map();
@@ -183,10 +269,20 @@ export default defineRule({
         return undefined;
       },
       ClassBody(node: ESTree.ClassBody) {
+        if (!declarationsApply) return;
         check(node, node.body);
       },
       TSEnumDeclaration(node: ESTree.TSEnumDeclaration) {
+        if (!declarationsApply) return;
         check(node, node.body.members);
+      },
+      TSInterfaceBody(node: ESTree.TSInterfaceBody) {
+        if (!typeMembersApply) return;
+        checkTypeMembers(node);
+      },
+      TSTypeLiteral(node: ESTree.TSTypeLiteral) {
+        if (!typeMembersApply) return;
+        checkTypeMembers(node);
       },
     };
   },
