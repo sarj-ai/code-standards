@@ -226,13 +226,11 @@ describe("the managed Oxlint config in a consumer", () => {
 
   it("runs the suppression policy on eslint-* and oxlint-* directives, including on line 1", () => {
     expect(codesOf("src/worker-configuration.d.ts")).toEqual(expect.arrayContaining([
-      "@sarj(directive-disable-enable-pair)",
       "@sarj(directive-no-use)",
       "@sarj(directive-require-description)",
       "unicorn(no-abusive-eslint-disable)",
     ]));
     expect(codesOf("src/directives.ts")).toEqual(expect.arrayContaining([
-      "@sarj(directive-disable-enable-pair)",
       "@sarj(directive-no-restricted-disable)",
       "@sarj(directive-no-use)",
       "@sarj(directive-require-description)",

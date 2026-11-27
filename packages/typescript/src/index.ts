@@ -8,11 +8,8 @@
 
 import type { Plugin } from "@oxlint/plugins";
 
-import directiveDisableEnablePair from "./rules/directive-disable-enable-pair.js";
-import directiveNoAggregatingEnable from "./rules/directive-no-aggregating-enable.js";
 import directiveNoDuplicateDisable from "./rules/directive-no-duplicate-disable.js";
 import directiveNoRestrictedDisable from "./rules/directive-no-restricted-disable.js";
-import directiveNoUnusedEnable from "./rules/directive-no-unused-enable.js";
 import directiveNoUse from "./rules/directive-no-use.js";
 import directiveRequireDescription from "./rules/directive-require-description.js";
 import duplicateTestBody from "./rules/duplicate-test-body.js";
@@ -189,11 +186,8 @@ import testLoopsOverLiteralCases from "./rules/test-loops-over-literal-cases.js"
 import testPhaseLabelComment from "./rules/test-phase-label-comment.js";
 
 const RULES = {
-  "directive-disable-enable-pair": directiveDisableEnablePair,
-  "directive-no-aggregating-enable": directiveNoAggregatingEnable,
   "directive-no-duplicate-disable": directiveNoDuplicateDisable,
   "directive-no-restricted-disable": directiveNoRestrictedDisable,
-  "directive-no-unused-enable": directiveNoUnusedEnable,
   "directive-no-use": directiveNoUse,
   "directive-require-description": directiveRequireDescription,
   "duplicate-test-body": duplicateTestBody,

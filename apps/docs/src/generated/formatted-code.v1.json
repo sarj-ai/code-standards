@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "21d824010bde6e462452a2b935a38937e758ab56c58422d3a69152f88ebb95ac",
-  "cliSha256": "8be618d0c26ee2d40cd9f5ffe9485a9f48abdf98c142726b01d1966847ce1c5f",
+  "catalogSha256": "fc733e2770d386ebe26ce0a613f4558467a165a7f1f42614ed92d688cc3ef687",
+  "cliSha256": "1428dda0610409d5a50a9688a67314843933fbfdae41cc001e06d444c1042748",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -1926,86 +1926,6 @@
       ],
       "optionsSchemaSource": null
     },
-    "oxlint:directive-disable-enable-pair": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "/* eslint-disable no-console -- the CLI prints its report */\nconsole.log(report);\n/* eslint-enable no-console */\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "closed-block",
-          "outcome": "accept",
-          "ruleOptions": [
-            {
-              "allowWholeFile": false
-            }
-          ],
-          "scenarioId": "primary",
-          "title": "Close the block right after the excused code"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "/* eslint-disable no-console -- the CLI prints its report */\nconsole.log(report);\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "unclosed-block",
-          "outcome": "reject",
-          "ruleOptions": [
-            {
-              "allowWholeFile": false
-            }
-          ],
-          "scenarioId": "primary",
-          "title": "A block disable that runs to the end of the file"
-        }
-      ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allowWholeFile\": {\n      \"description\": \"Allow an unpaired disable directive before the file's first token.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
-    },
-    "oxlint:directive-no-aggregating-enable": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "/* eslint-disable no-console -- the CLI prints its report */\n/* eslint-disable no-debugger -- a breakpoint for the demo */\nconsole.log(report);\ndebugger;\n/* eslint-enable no-debugger */\n/* eslint-enable no-console */\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "one-enable-each",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "One enable directive for each disable directive"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "/* eslint-disable no-console -- the CLI prints its report */\n/* eslint-disable no-debugger -- a breakpoint for the demo */\nconsole.log(report);\ndebugger;\n/* eslint-enable */\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "shared-enable",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "One enable directive closes two disable directives"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "oxlint:directive-no-duplicate-disable": {
       "examples": [
         {
@@ -2082,45 +2002,10 @@
       ],
       "optionsSchemaSource": "{ \"items\": { \"type\": \"string\" }, \"type\": \"array\", \"uniqueItems\": true }\n"
     },
-    "oxlint:directive-no-unused-enable": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "/* eslint-disable no-console -- the CLI prints its report */\nconsole.log(report);\n/* eslint-enable no-console */\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "paired-enable",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "An enable directive that closes a disable directive"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "src/report.ts",
-              "source": "console.log(report);\n/* eslint-enable no-console */\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "src/report.ts",
-          "id": "stray-enable",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "An enable directive with no disable directive before it"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
     "oxlint:directive-no-use": {
       "examples": [
         {
-          "expectedCount": 1,
+          "expectedCount": 2,
           "files": [
             {
               "path": "src/report.ts",
@@ -2174,7 +2059,7 @@
           "title": "Disable one line instead"
         }
       ],
-      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Directive kinds to allow, such as `eslint-disable-next-line`; an `oxlint-*` directive follows its `eslint-*` kind.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    }\n  },\n  \"type\": \"object\"\n}\n"
+      "optionsSchemaSource": "{\n  \"additionalProperties\": false,\n  \"properties\": {\n    \"allow\": {\n      \"description\": \"Directive kinds to allow, such as `eslint-disable-next-line`; an `oxlint-*` directive follows its `eslint-*` kind.\",\n      \"items\": { \"type\": \"string\" },\n      \"type\": \"array\",\n      \"uniqueItems\": true\n    },\n    \"allowWholeFile\": {\n      \"description\": \"Allow an unpaired disable directive before the file's first token.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}\n"
     },
     "oxlint:directive-require-description": {
       "examples": [

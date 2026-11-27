@@ -102,14 +102,14 @@ def test_oxlint_directives_cannot_hide_from_the_comment_floor(tmp_path: Path, di
         ("export {};\n/* eslint-disable */\ndebugger;\n", "unicorn/no-abusive-eslint-disable"),
         ("export {};\n/* oxlint-disable */\ndebugger;\n", "unicorn/no-abusive-eslint-disable"),
         (
-            "export {};\n/* eslint-disable no-debugger -- block */\ndebugger;\n",
+            "export {};\n/* eslint-disable no-debugger -- block */\ndebugger;\n/* eslint-enable no-debugger -- block */\n",
             "@sarj/directive-no-use",
         ),
         (
             "export {};\n/* oxlint-disable no-debugger -- block */\ndebugger;\n/* oxlint-enable no-debugger -- block */\n",
             "@sarj/directive-no-use",
         ),
-        ("export {};\n/* eslint-disable no-debugger -- block */\ndebugger;\n", "@sarj/directive-disable-enable-pair"),
+        ("export {};\n/* eslint-disable no-debugger -- block */\ndebugger;\n", "@sarj/directive-no-use"),
     ],
 )
 def test_directives_cannot_disable_the_floor_or_everything(tmp_path: Path, source: str, expected: str) -> None:

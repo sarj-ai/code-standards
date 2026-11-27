@@ -694,11 +694,8 @@ const RULES = {
 
   // Suppression policy: @sarj ports of @eslint-community/eslint-comments that read eslint-* and oxlint-* directives.
   "@sarj/no-oxlint-directive": "error",
-  "@sarj/directive-disable-enable-pair": ["error", {"allowWholeFile": false}],
-  "@sarj/directive-no-aggregating-enable": "error",
   "@sarj/directive-no-duplicate-disable": "error",
   "@sarj/directive-no-restricted-disable": ["error", "no-console", "react-hooks/exhaustive-deps", "react/exhaustive-deps", "@sarj/no-vague-suppression-description"],
-  "@sarj/directive-no-unused-enable": "error",
   "@sarj/directive-no-use": [
     "error",
     {
@@ -709,7 +706,8 @@ const RULES = {
         "exported",
         "global",
         "globals"
-      ]
+      ],
+      "allowWholeFile": false
     }
   ],
   "@sarj/directive-require-description": ["error", {"ignore": []}],

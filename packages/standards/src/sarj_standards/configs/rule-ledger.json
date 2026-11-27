@@ -328,11 +328,8 @@
       "require-prevent-destroy-on-irreplaceable"
     ],
     "oxlint": [
-      "directive-disable-enable-pair",
-      "directive-no-aggregating-enable",
       "directive-no-duplicate-disable",
       "directive-no-restricted-disable",
-      "directive-no-unused-enable",
       "directive-no-use",
       "directive-require-description",
       "duplicate-test-body",
@@ -856,6 +853,27 @@
       "status": "removed",
       "replacement": null,
       "note": "Delete the config entry and suppressions; there is no replacement."
+    },
+    {
+      "id": "@sarj/directive-disable-enable-pair",
+      "kind": "oxlint",
+      "status": "renamed",
+      "replacement": "@sarj/directive-no-use",
+      "note": "Replace @sarj/directive-disable-enable-pair with @sarj/directive-no-use before upgrading."
+    },
+    {
+      "id": "@sarj/directive-no-aggregating-enable",
+      "kind": "oxlint",
+      "status": "renamed",
+      "replacement": "@sarj/directive-no-use",
+      "note": "Replace @sarj/directive-no-aggregating-enable with @sarj/directive-no-use before upgrading."
+    },
+    {
+      "id": "@sarj/directive-no-unused-enable",
+      "kind": "oxlint",
+      "status": "renamed",
+      "replacement": "@sarj/directive-no-use",
+      "note": "Replace @sarj/directive-no-unused-enable with @sarj/directive-no-use before upgrading."
     },
     {
       "id": "@sarj/jsdoc-restates-signature",

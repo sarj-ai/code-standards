@@ -19,7 +19,6 @@ import { LIBRARY_POLICY } from "./src/library-policy.ts";
 // The options the managed preset gives these rules; the rest take their
 // defaults. The directive rules carry the Standards floor's options.
 const SARJ_OPTIONS: Readonly<DummyRuleMap> = {
-  "@sarj/directive-disable-enable-pair": ["error", { allowWholeFile: false }],
   "@sarj/directive-no-restricted-disable": [
     "error",
     "@sarj/directive-*",
@@ -38,6 +37,7 @@ const SARJ_OPTIONS: Readonly<DummyRuleMap> = {
         "global",
         "globals",
       ],
+      allowWholeFile: false,
     },
   ],
   "@sarj/directive-require-description": ["error", { ignore: [] }],

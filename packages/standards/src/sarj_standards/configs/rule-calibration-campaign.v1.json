@@ -3613,22 +3613,6 @@
       "outcome": "Promote to ERROR under the reviewed source policy. Enforce exact suppression syntax, pairing and scope. This is deterministic directive policy; retain existing directive options and protected-rule behavior. Broader field calibration retains its existing state."
     },
     {
-      "task": "rule-audit/typescript/directive-disable-enable-pair",
-      "family": "typescript",
-      "ruleId": "directive-disable-enable-pair",
-      "state": "pending",
-      "evidence": "2026-11-15 separate severity review: see packages/standards/benchmarks/warning-severity-review-20261115.json. Recognition and autofix boundaries are preserved; native corpus findings match after severity normalization. Field-calibration completion is not claimed.",
-      "outcome": "Promote to ERROR under the reviewed source policy. Enforce exact suppression syntax, pairing and scope. This is deterministic directive policy; retain existing directive options and protected-rule behavior. Broader field calibration retains its existing state."
-    },
-    {
-      "task": "rule-audit/typescript/directive-no-aggregating-enable",
-      "family": "typescript",
-      "ruleId": "directive-no-aggregating-enable",
-      "state": "pending",
-      "evidence": "2026-11-15 separate severity review: see packages/standards/benchmarks/warning-severity-review-20261115.json. Recognition and autofix boundaries are preserved; native corpus findings match after severity normalization. Field-calibration completion is not claimed.",
-      "outcome": "Promote to ERROR under the reviewed source policy. Enforce exact suppression syntax, pairing and scope. This is deterministic directive policy; retain existing directive options and protected-rule behavior. Broader field calibration retains its existing state."
-    },
-    {
       "task": "rule-audit/typescript/directive-no-duplicate-disable",
       "family": "typescript",
       "ruleId": "directive-no-duplicate-disable",
@@ -3640,14 +3624,6 @@
       "task": "rule-audit/typescript/directive-no-restricted-disable",
       "family": "typescript",
       "ruleId": "directive-no-restricted-disable",
-      "state": "pending",
-      "evidence": "2026-11-15 separate severity review: see packages/standards/benchmarks/warning-severity-review-20261115.json. Recognition and autofix boundaries are preserved; native corpus findings match after severity normalization. Field-calibration completion is not claimed.",
-      "outcome": "Promote to ERROR under the reviewed source policy. Enforce exact suppression syntax, pairing and scope. This is deterministic directive policy; retain existing directive options and protected-rule behavior. Broader field calibration retains its existing state."
-    },
-    {
-      "task": "rule-audit/typescript/directive-no-unused-enable",
-      "family": "typescript",
-      "ruleId": "directive-no-unused-enable",
       "state": "pending",
       "evidence": "2026-11-15 separate severity review: see packages/standards/benchmarks/warning-severity-review-20261115.json. Recognition and autofix boundaries are preserved; native corpus findings match after severity normalization. Field-calibration completion is not claimed.",
       "outcome": "Promote to ERROR under the reviewed source policy. Enforce exact suppression syntax, pairing and scope. This is deterministic directive policy; retain existing directive options and protected-rule behavior. Broader field calibration retains its existing state."
