@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from bisect import bisect_right
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, NamedTuple, final, override
@@ -15,7 +16,11 @@ from sarj_sql_lint.rule_base import (
     RuleCategory,
     RuleDocumentation,
     RuleExample,
+    mask_sql_literals_and_comments,
+    source_location,
+    sql_relation_key,
 )
+from sarj_sql_lint.rules._constraint_analysis import migration_section_lines
 from sarj_sql_lint.rules._index_analysis import (
     IndexDefinition,
     IndexDrop,
@@ -24,6 +29,7 @@ from sarj_sql_lint.rules._index_analysis import (
     drop_namespace_keys,
     index_namespace_key,
 )
+from sarj_sql_lint.rules.require_fk_index import constraint_index_keys
 
 
 if TYPE_CHECKING:
@@ -49,7 +55,7 @@ class NoDuplicateIndex(Rule):
         category=RuleCategory.PERFORMANCE,
         autofix=AutofixPolicy.NONE,
         limitations=(
-            "Only explicit indexes in one authored production migration are checked; tests, dumps, fixtures, recognized generator-owned migrations, and indexes that exist only outside the file are excluded.",
+            "Only explicit indexes in one authored production migration are checked; PRIMARY KEY / UNIQUE constraints declared earlier in the same migration section are compared as unique access paths at WARNING; tests, dumps, fixtures, recognized generator-owned migrations, and indexes that exist only outside the file are excluded.",
             "DROP INDEX operations in the same migration remove the named definition from the final active set before repeated definitions are compared.",
             "The normalized definition includes uniqueness, table and ONLY scope, access method, ordered key expressions and operator classes, INCLUDE columns, NULLS DISTINCT treatment, storage parameters, tablespace, and WHERE predicate.",
             "Semantically equivalent expressions with different normalized source spelling are intentionally not inferred.",
@@ -145,8 +151,47 @@ class NoDuplicateIndex(Rule):
                     severity=DefaultLevel.WARNING,
                 )
             )
+        _find_constraint_backed_copies(source, indexes, reported, findings, path, code=self.code)
         findings.sort(key=lambda diagnostic: (diagnostic.line, diagnostic.col))
         return findings
+
+
+def _find_constraint_backed_copies(
+    source: str,
+    indexes: list[IndexDefinition],
+    reported: set[int],
+    findings: list[Diagnostic],
+    path: Path,
+    *,
+    code: str,
+) -> None:
+    if not indexes:
+        return
+    masked = mask_sql_literals_and_comments(source, mask_dollar_literals=True)
+    sections = migration_section_lines(source)
+    for constraint in constraint_index_keys(masked):
+        section = bisect_right(sections, source_location(masked, constraint.start).line)
+        for index in indexes:
+            if index.start in reported or index.start <= constraint.start or index.unique or index.method != "btree":
+                continue
+            if any((index.only, index.predicate, index.include, index.storage_parameters, index.tablespace)):
+                continue
+            if bisect_right(sections, index.line) != section or index.keys not in constraint.keys.get(
+                sql_relation_key(index.table), ()
+            ):
+                continue
+            reported.add(index.start)
+            findings.append(
+                Diagnostic(
+                    path,
+                    index.line,
+                    index.column,
+                    code,
+                    f"Non-unique index `{index.name}` repeats a PRIMARY KEY or UNIQUE constraint access path "
+                    f"on table `{index.table}`; remove the non-unique copy unless an exact query plan proves distinct value.",
+                    severity=DefaultLevel.WARNING,
+                )
+            )
 
 
 class _IndexAccessSignature(NamedTuple):

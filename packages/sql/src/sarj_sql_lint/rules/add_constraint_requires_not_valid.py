@@ -187,9 +187,10 @@ class AddConstraintRequiresNotValid(Rule):
         fresh_tables: set[TableKey] = set()
         sections = migration_section_lines(source)
         previous_section = -1
+        in_do_body = False
         for statement in split_statements(masked):
             tokens = tokenize("\n".join(fragment for _, fragment in statement))
-            if tokens is None or not tokens:
+            if not tokens:
                 fresh_tables.clear()
                 continue
             section = bisect_right(sections, locate(statement, tokens[0].start).line)
@@ -199,11 +200,34 @@ class AddConstraintRequiresNotValid(Rule):
 
             _update_fresh_table_proof(tokens, fresh_tables)
             altered = alter_table(tokens)
+            if consume(tokens, 0, "DO"):
+                in_do_body = True
+            if altered is None and in_do_body:
+                altered = alter_table(_embedded_alter_tokens(tokens))
+            if consume(tokens, 0, "END"):
+                in_do_body = in_do_body and len(tokens) > 1 and tokens[1].text.upper() in {"IF", "LOOP", "CASE"}
             if altered is not None:
                 table, actions, _, _ = altered
                 diags.extend(_constraint_action_findings(actions, table, fresh_tables, statement, path, code=self.code))
 
         return diags
+
+
+def _embedded_alter_tokens(tokens: list[Token]) -> list[Token]:
+    depth = 0
+    for index, token in enumerate(tokens):
+        if token.text == "(":
+            depth += 1
+        elif token.text == ")":
+            depth -= 1
+        elif (
+            depth == 0
+            and index >= 1
+            and sequence(tokens, index, ("ALTER", "TABLE"))
+            and tokens[index - 1].text.upper() in {"BEGIN", "THEN", "ELSE", "LOOP"}
+        ):
+            return tokens[index:]
+    return []
 
 
 def _update_fresh_table_proof(tokens: list[Token], fresh_tables: set[TableKey]) -> None:
