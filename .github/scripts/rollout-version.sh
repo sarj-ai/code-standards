@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export UV_PYTHON_DOWNLOADS_JSON_URL="${UV_PYTHON_DOWNLOADS_JSON_URL:-https://raw.githubusercontent.com/astral-sh/uv/6b2d39dcc390293d51c9c0d2bbcd650f4bcbfdce/crates/uv-python-managed/download-metadata.json}"
+export UV_PYTHON_DOWNLOADS_JSON_URL="${UV_PYTHON_DOWNLOADS_JSON_URL:-https://raw.githubusercontent.com/astral-sh/uv/e3e7c1eacb980339352a5ad69affcd3b6c206c92/crates/uv-python-managed/download-metadata.json}"
 version="$REQUESTED_VERSION"
 if [[ -z "$version" && "$EVENT_NAME" == schedule ]]; then
   version="$(uvx --no-config --isolated --python "${STANDARDS_PYTHON:-3.15.2}" --refresh --from code-standards code-standards --version | sed -E 's/.* ([0-9][^ ]*)$/\1/')"

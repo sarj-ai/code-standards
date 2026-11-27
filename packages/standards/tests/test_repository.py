@@ -1488,9 +1488,9 @@ def test_native_hook_binary_matches_the_runtime_platform(
     def git(_root: Path, *_args: str) -> str:
         return ".git/hooks/pre-commit\n"
 
-    metadata = tmp_path / "lefthook-2.2.3.dist-info"
+    metadata = tmp_path / "lefthook-2.2.4.dist-info"
     metadata.mkdir()
-    (metadata / "METADATA").write_text("Name: lefthook\nVersion: 2.2.3\n", encoding="utf-8")
+    (metadata / "METADATA").write_text("Name: lefthook\nVersion: 2.2.4\n", encoding="utf-8")
 
     def installed_distribution(name: str) -> PathDistribution:
         assert name == "lefthook"

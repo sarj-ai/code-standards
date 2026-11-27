@@ -261,7 +261,7 @@ wheels = [
 
 [[package]]
 name = "sarj-python-lint"
-version = "1.207.0"
+version = "1.207.1"
 source = { editable = "." }
 dependencies = [
     { name = "packaging" },
@@ -286,8 +286,8 @@ requires-dist = [
     { name = "ruff", specifier = ">=0.17.6" },
     { name = "sarj-rule-contracts", editable = "../contracts" },
     { name = "sarj-sql-lint", editable = "../sql" },
-    { name = "sqlglot", specifier = "==30.34.0" },
-    { name = "typer", specifier = "==0.29.2" },
+    { name = "sqlglot", specifier = "==30.35.0" },
+    { name = "typer", specifier = "==0.29.3" },
 ]
 
 [package.metadata.requires-dev]
@@ -314,7 +314,7 @@ dev = [
 
 [[package]]
 name = "sarj-sql-lint"
-version = "0.53.3"
+version = "0.53.4"
 source = { editable = "../sql" }
 dependencies = [
     { name = "sarj-rule-contracts" },
@@ -325,8 +325,8 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "sarj-rule-contracts", editable = "../contracts" },
-    { name = "sqlglot", specifier = "==30.34.0" },
-    { name = "typer", specifier = "==0.29.2" },
+    { name = "sqlglot", specifier = "==30.35.0" },
+    { name = "typer", specifier = "==0.29.3" },
 ]
 
 [package.metadata.requires-dev]
@@ -348,16 +348,16 @@ wheels = [
 
 [[package]]
 name = "sqlglot"
-version = "30.34.0"
+version = "30.35.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/57/ba/4fa59676b44ca9f8b07f4e2cdeae84a8f3d3691f4db71894b5d89fda1d2c/sqlglot-30.34.0.tar.gz", hash = "sha256:43cf9a6bb558bf2fe6fd4493a64f870dae76e21d43dace8819be7c3432c078d9", size = 6283034, upload-time = "2026-11-23T21:41:24.947Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/4d/4d544c0ecc71c6decd643297c9ca8150aaa3477e285ccc50bc7549b1eb04/sqlglot-30.35.0.tar.gz", hash = "sha256:cca0d94bd12026184b0ba9f0f9c78a34a932d730a598de7893de448debb0149d", size = 6295274, upload-time = "2026-11-24T20:15:24.424Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c1/6b/c3750c331888e1ad3a84f59280e41660239a5b9a8268679dcbe9dda2b813/sqlglot-30.34.0-py3-none-any.whl", hash = "sha256:5ce4763ac98c6b24422a3c062b6e63f30ec4e6be9a81333c8dfa74adc9fb07bf", size = 842064, upload-time = "2026-11-23T21:41:23.135Z" },
+    { url = "https://files.pythonhosted.org/packages/13/4e/71e145862b2925aea5020d19fcf47a4a2683cf6a3ff5cdd1e296aad7e552/sqlglot-30.35.0-py3-none-any.whl", hash = "sha256:136757a9845f4225f25613b26fc4e778e679c7a40b15bcc9b84e61bfc50c6dd8", size = 846417, upload-time = "2026-11-24T20:15:22.11Z" },
 ]
 
 [[package]]
 name = "typer"
-version = "0.29.2"
+version = "0.29.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "annotated-doc" },
@@ -366,9 +366,9 @@ dependencies = [
     { name = "rich" },
     { name = "shellingham" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bf/21/37383ece7d0a4995fb8ea97729207c4292b3ff94085002f37b2387063cfb/typer-0.29.2.tar.gz", hash = "sha256:b1998dc5f2c3dedafa1517a9521fa944cc4dc1fadcea085d81a3b10ebcaeb075", size = 205728, upload-time = "2026-11-18T11:09:46.189Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f4/8f/4583099c74623e04610d9df01ff58a9217935e88fdbd4b14167ebe99c134/typer-0.29.3.tar.gz", hash = "sha256:8189a53bb9684dc551e0b61e71904b323214884f2eb14bfe71aa859ae980d10a", size = 205982, upload-time = "2026-11-26T08:20:50.693Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/62/f3/864dcb0e165b52e9f75aa3c7e0aeeb9876f139c66eb14d87856bb173b0fa/typer-0.29.2-py3-none-any.whl", hash = "sha256:f30731f8ca758368b836b3714872e58e395cef8fcaff918c853b1969ed5274e7", size = 121041, upload-time = "2026-11-18T11:09:45.03Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/43/a3e7ce867dc4fa852f4223ada99d29bc9ba5faf32496b63ec587cd10a0d7/typer-0.29.3-py3-none-any.whl", hash = "sha256:1fd37275046faecc86caa2e0e313978c10db71533fc0fe1a48f4e03a60efc23c", size = 121082, upload-time = "2026-11-26T08:20:49.527Z" },
 ]
 
 [[package]]

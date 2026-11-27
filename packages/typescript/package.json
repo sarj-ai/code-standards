@@ -1,6 +1,6 @@
 {
   "name": "@sarj/eslint-plugin",
-  "version": "19.44.1",
+  "version": "19.44.2",
   "packageManager": "npm@12.2.3",
   "description": "Custom Oxlint rules for hypermodern TypeScript / React / Next.js projects",
   "type": "module",
@@ -87,22 +87,22 @@
   "author": "sarj-ai",
   "license": "MIT",
   "dependencies": {
-    "@eslint/css-tree": "4.1.3",
+    "@eslint/css-tree": "4.1.4",
     "change-case": "5.4.4",
     "oxc-parser": "0.160.0"
   },
   "devDependencies": {
     "@oxlint/plugins": "1.95.0",
-    "@types/node": "26.6.6",
+    "@types/node": "26.6.11",
     "esbuild": "0.28.2",
-    "eslint-plugin-zod": "^5.3.0",
+    "eslint-plugin-zod": "^5.4.0",
     "jsonc-parser": "3.3.1",
     "oxfmt": "0.80.0",
     "oxlint": "1.95.0",
     "oxlint-plugin-eslint": "1.95.0",
     "oxlint-plugin-react-doctor": "0.9.23",
-    "oxlint-tsgolint": "7.0.2008",
-    "postcss": "8.5.33",
+    "oxlint-tsgolint": "7.0.2009",
+    "postcss": "8.5.34",
     "prettier": "3.10.1",
     "stylelint": "18.1.0",
     "syncpack": "15.3.4",
@@ -110,7 +110,7 @@
     "tsup": "9.0.0",
     "typescript": "npm:@typescript/typescript6@6.0.2",
     "uuid": "14.0.3",
-    "vitest": "5.1.1",
+    "vitest": "5.1.2",
     "zod": "4.6.7"
   },
   "peerDependencies": {

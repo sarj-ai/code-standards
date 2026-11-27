@@ -61,20 +61,20 @@
       "subpath": "next"
     }
   ],
-  "sourceLockSha256": "d35577444817a77219633a1c731fd98f7eac477124938c00ca4ca71c906a5fd3",
+  "sourceLockSha256": "360c5199b6fcbe41dd98d7d4186d388ae6079021b2c3fcc1ed760e07d58e21f6",
   "files": {
-    "effects.js": "ae3d034680cfac1ef1898ce1677e253b62c72eaebab185d324fc743b129503ac",
-    "jsdoc-js.js": "9e5850f2d281ecb96aa9b524ac503e5929530e3c9d296b9b50fb224178e6e6bd",
+    "effects.js": "818d7ec267686d032dda0531bf2e8c25e15e0b4d61e507c7fa21e1ba5718893b",
+    "jsdoc-js.js": "fbc66004165bf3d14a542b91699822fdbfda5fb86d8c5eee9a977e71565c2060",
     "next.js": "b701bb25486f4d21254c701f591758861992b85e5ab15390c1b8bab4fd6e7db0",
     "node-test.js": "b7ec8fba5b388002c4e171dd6ab57dff007e0bfc6b75ecc2b6deb4a349058ace",
     "playwright.js": "6cd5fd230f79d7874de688bf7ceaf6a0aa9c7da70a2a76254c147515ae46463a",
     "query.js": "90a2aa2ff8009131b63f571feb3c054b574725e82c05449bb5f56d0f1eed2c00",
     "react-correctness.js": "cb86a3d909d34c63338bca8ef5ddd217544d96e49b9b3b693e0d077d29a8e682",
     "react-js.js": "0a8ac0ce339f7e30db50edf2a67d074f0db980793b5254c1bffb8595f5c3e47b",
-    "regexp.js": "7fce99a9f6832573e7ece8f93e33f61fe18f302379dbc66f91f9025344e248ce",
+    "regexp.js": "faebe1bce53481ed81fb6ac58b8a505eaffe29a22606a24ef9ba9a623acf9e01",
     "security.js": "eee0b8694a40f2bf99ea24bb437f8813a8597a679740a66984f05563ea54d776",
     "testing-library.js": "c6787ed2199e04f6e1c10324cdc3cd14564cd2592aeb0c84de71de3e3faf5fe5",
-    "unicorn-js.js": "c5927a1d8fcf23c344ed57604127cb51f66316ff3c5d1325b7b7dcec4102ca22",
-    "THIRD_PARTY_NOTICES.txt": "9d15a5452b7e5bb178d1f5eb196582fbf3adbe2c3d795fa969012d92034c15d4"
+    "unicorn-js.js": "35208b9abdb35fb3a302d0e5767063f68fc149d027198f6606c84063f38dd158",
+    "THIRD_PARTY_NOTICES.txt": "d1db0867a1c2ca2cfe043a1a788f1449a39b332846f03197816093dd169219ec"
   }
 }

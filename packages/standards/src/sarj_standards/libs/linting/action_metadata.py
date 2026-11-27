@@ -28,7 +28,7 @@ from sarj_standards.libs.linting.external import DEFAULT_EXECUTOR, process_reque
 if TYPE_CHECKING:
     from sarj_standards.libs.linting.external import ProcessExecutor
 
-_SHA256 = "bb9b08b76bd29f664cd6f4fec2c1e26452412a58b01d548f7112acee721bd634"
+_SHA256 = "5c6be143cb82cbd26bf19beafe716d07ba82385c308a0fdb05d12fa2facb1e72"
 _MAX_SOURCE_BYTES = 2 * 1024 * 1024
 _MAX_BATCH_BYTES = 8 * 1024 * 1024
 _MAX_BATCH_FILES = 256

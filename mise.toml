@@ -1,7 +1,7 @@
 # Match the native versions attested by doctor and the documentation formatter.
 [tools]
 npm = "12.2.3"
-uv = "0.13.9"
+uv = "0.13.10"
 "aqua:hashicorp/terraform" = "1.17.2"
 "aqua:koalaman/shellcheck" = "0.11.0"
 "aqua:mvdan/sh" = "3.14.1"

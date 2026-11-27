@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.14"
-# dependencies = ["typer==0.29.2", "pydantic==2.14.4"]
+# dependencies = ["typer==0.29.3", "pydantic==2.14.4"]
 # ///
 
 

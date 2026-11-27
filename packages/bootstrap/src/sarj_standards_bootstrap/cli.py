@@ -21,7 +21,7 @@ MANIFEST_NAME: Final = ".sarj-standards.toml"
 SUPPORTED_MANIFEST_SCHEMAS: Final = frozenset({3, 4})
 TOOL_PYTHON: Final = "3.15.2"
 _PYTHON315_BUNDLE: Final = (8, 40, 0)
-_PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/6b2d39dcc390293d51c9c0d2bbcd650f4bcbfdce/crates/uv-python-managed/download-metadata.json"
+_PYTHON_DOWNLOADS: Final = "https://raw.githubusercontent.com/astral-sh/uv/e3e7c1eacb980339352a5ad69affcd3b6c206c92/crates/uv-python-managed/download-metadata.json"
 _VERSION: Final = re.compile(r"(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\Z")
 
 
