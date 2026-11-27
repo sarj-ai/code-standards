@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 
 _BASE = "import time\ndef measure():\n    start = time.time()\n    work()\n    return time.time() - start\n"
+_FIELD = "import time\nclass Monitor:\n    def __init__(self):\n        self._held_at: float | None = None\n    def hold(self):\n        self._held_at = time.time()\n    def reset(self):\n        self._held_at = None\n    def on_hold(self):\n        return self._held_at is not None and time.time() - self._held_at < 30\n"
 _CASES = (
     EvaluationCase("local-elapsed", Language.PYTHON, _BASE, ExpectedOutcome.MATCH),
     EvaluationCase(
@@ -96,6 +97,48 @@ def test_one_warning_at_start_for_multiple_measurements() -> None:
     assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
         ("SARJ461", 3, 13, Severity.WARNING)
     ]
+
+
+def test_private_elapsed_field_warns_at_wall_clock_store() -> None:
+    findings = PreferMonotonicForElapsedTime().check(Path("app/metrics.py"), _FIELD)
+    assert [(item.code, item.line, item.col, item.severity) for item in findings] == [
+        ("SARJ461", 6, 25, Severity.WARNING)
+    ]
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(_FIELD.replace("= None\n    def hold", "= 0.0\n    def hold"), id="non-clock-write"),
+        _FIELD + "    def snapshot(self):\n        return self._held_at\n",
+        _FIELD + "    def age(self, now):\n        return now - self._held_at\n",
+        pytest.param(_FIELD.replace("_held_at", "held_at"), id="public-field"),
+        _FIELD + "def peek(monitor):\n    return monitor._held_at\n",
+        pytest.param(
+            _FIELD.replace(
+                "return self._held_at is not None and time.time() - self._held_at < 30",
+                "return self._held_at is not None",
+            ),
+            id="no-elapsed-read",
+        ),
+        _FIELD + "    def load(self):\n        return getattr(self, '_held_at')\n",
+        pytest.param(_FIELD.replace("time.time", "time.monotonic"), id="monotonic-clock"),
+        pytest.param(_FIELD.replace("self._held_at", "self._monitoring_state._held_at"), id="indirect-field"),
+        _FIELD + "    def paused(self):\n        return 0 if self._held_at else 1\n",
+        pytest.param(_FIELD.replace("_held_at", "__held_at"), id="dunder-field"),
+        _FIELD + "    def clear(self):\n        del self._held_at\n",
+        _FIELD + "    def shift(self):\n        self._held_at += 1\n",
+        pytest.param(_FIELD.replace("self._held_at = None", "self._held_at, other = None, None"), id="unpacked-write"),
+        pytest.param(_FIELD.replace("self._held_at = None", "self._held_at = other = None"), id="chained-write"),
+        _FIELD + "    def restore(self, values):\n        for self._held_at in values: pass\n",
+        _FIELD + "    def restore(self, manager):\n        with manager as self._held_at: pass\n",
+        _FIELD + "    def shadow(self, _held_at): pass\n",
+        _FIELD + "    _held_at = None\n",
+        _FIELD + "class Other:\n    def __init__(self):\n        self._held_at = None\n",
+    ],
+)
+def test_ignores_ambiguous_or_non_elapsed_fields(source: str) -> None:
+    assert PreferMonotonicForElapsedTime().check(Path("app/metrics.py"), source) == []
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, Final, NamedTuple, final, override
@@ -61,7 +62,7 @@ class NoFixedSleepInLoop(Rule):
         limitations=(
             "Only awaited asyncio.sleep, anyio.sleep, and trio.sleep, and time.sleep in synchronous functions, are inspected; import aliases are followed and shadowed names abstain. time.sleep in an async function is left to Ruff ASYNC251.",
             "A duration is fixed when it folds with +, -, *, /, and // from numeric literals and UPPER_CASE constants bound once at module scope in the same file to such a literal; zero and negative results are yields, not waits.",
-            "Imported, reassigned, or shadowed constants, lowercase names, attributes including class constants, subscripts, and calls are treated as configurable and are not reported.",
+            "Imported, reassigned, or shadowed constants, lowercase names, attributes including class constants, calls, and subscripts of anything except a once-bound module-level UPPER_CASE tuple of positive numeric literals are treated as configurable and are not reported.",
             "The sleep must sit in the body of a for, async for, or while loop inside the same function; loop else clauses, module-level and class-level loops, and loops in an enclosing function across a nested def, lambda, or class are not reported.",
             "Test modules, test directories, conftest.py, test-support paths, and generated files are excluded.",
         ),
@@ -163,8 +164,16 @@ class NoFixedSleepInLoop(Rule):
                 severity=Severity.ERROR,
             )
             for reported, duration in sleeps
-            if (seconds := _folded_seconds(duration, constants)) is not None
-            and seconds > 0
+            if (
+                ((seconds := _folded_seconds(duration, constants.seconds)) is not None and seconds > 0)
+                or (
+                    isinstance(duration, ast.Subscript)
+                    and isinstance(duration.value, ast.Name)
+                    and isinstance(duration.value.ctx, ast.Load)
+                    and duration.value.id in constants.schedules
+                    and not isinstance(duration.slice, ast.Slice)
+                )
+            )
             and not context.suppressions.is_suppressed(reported.lineno, self.code)
         ]
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
@@ -191,7 +200,28 @@ def _duration(call: ast.Call) -> ast.expr | None:
     return next((keyword.value for keyword in call.keywords if keyword.arg in _DURATION_KEYWORDS), None)
 
 
-def _module_constants(context: PythonFileContext) -> dict[str, float]:
+@dataclass(frozen=True)
+class _ModuleConstants:
+    seconds: dict[str, float]
+    schedules: set[str]
+
+
+def _module_constants(context: PythonFileContext) -> _ModuleConstants:
+    assignments = _module_assignments(context)
+    constants = {
+        name: seconds for name, value in assignments.items() if (seconds := _folded_seconds(value, {})) is not None
+    }
+    schedules = {
+        name
+        for name, value in assignments.items()
+        if isinstance(value, ast.Tuple)
+        and value.elts
+        and all((seconds := _folded_seconds(element, {})) is not None and seconds > 0 for element in value.elts)
+    }
+    return _ModuleConstants(constants, schedules)
+
+
+def _module_assignments(context: PythonFileContext) -> dict[str, ast.expr]:
     tree = context.tree
     if tree is None:
         return {}
@@ -212,11 +242,7 @@ def _module_constants(context: PythonFileContext) -> dict[str, float]:
         *(node.name for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)),
         *context.imports.bindings,
     }
-    return {
-        name: seconds
-        for name, value in assignments.items()
-        if stores[name] == 1 and name not in rebound and (seconds := _folded_seconds(value, {})) is not None
-    }
+    return {name: value for name, value in assignments.items() if stores[name] == 1 and name not in rebound}
 
 
 def _folded_seconds(node: ast.expr | None, constants: Mapping[str, float]) -> float | None:
