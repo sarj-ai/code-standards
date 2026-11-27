@@ -8,7 +8,7 @@ export const NO_UNSAFE_MOCK_CASTING_DOCUMENTATION = {
   remediation: "Create the mock or spy first, then use the framework's mocked helper to preserve the original value's type. The helper does not create or verify a runtime mock.",
   category: "testing",
   autofix: "safe",
-  limitations: ["Only mock types imported from Vitest or Jest modules are inspected. mocked is a type helper, not runtime validation or a replacement for mock setup.",
+  limitations: ["Only mock types imported from Vitest or Jest modules, and ReturnType<typeof vi.fn> or ReturnType<typeof jest.fn> through a resolved import or unshadowed global, are inspected. mocked is a type helper, not runtime validation or a replacement for mock setup.",
     "Automatic fixes remove only an erased mock assertion from an unused private unannotated const initialized by an identifier, optionally through unknown assertions. Every erased named type/generic/namespace binding must retain an independent exported type use; potentially erased annotations and self references cannot witness each other. Evaluation is unchanged; referenced/exported bindings, contextual expressions, scripts, declaration files, eval and comments remain manual."],
   references: ["https://vitest.dev/api/vi.html#vi-mocked"],
   examples: [

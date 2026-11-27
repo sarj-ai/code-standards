@@ -10,7 +10,7 @@ export const NO_FIRST_PARTY_MODULE_MOCK_DOCUMENTATION = {
   requiresTypeInformation: false,
   runtimeImports: ["@jest/globals", "vitest"],
   references: ["https://github.com/dmmulroy/anti-slop/blob/13909c9e07590f5a85d93c62712259fe14a883f7/src/rules/no-module-mocking.ts"],
-  limitations: ["Only generated-free test files, provenance-resolved Vitest mock/doMock or Jest mock/doMock/unstable_mockModule APIs, relative module specifiers, and explicitly configured first-party prefixes are checked. Third-party, framework, Jest virtual modules, unknown Jest options, type-only imports and dynamic module names are excluded. Unimported framework globals and indirect namespace aliases are not inferred."],
+  limitations: ["Only generated-free test files, provenance-resolved Vitest mock/doMock or Jest mock/doMock/unstable_mockModule APIs, relative module specifiers, and explicitly configured first-party prefixes are checked. Third-party, framework, Jest virtual modules, unknown Jest options, type-only imports and dynamic module names are excluded. Unshadowed vi and jest globals are resolved; indirect namespace aliases are not inferred."],
   examples: [
     { id: "injected-service", title: "Inject a narrow service port", outcome: "no-match", files: [{ path: "action.test.ts", source: "const result = await runAction({ service: recordingService });" }], focusPath: "action.test.ts", expectedCount: 0, public: true },
     { id: "relative-module-mock", title: "Do not replace an owned module", outcome: "match", files: [{ path: "action.test.ts", source: "import { vi } from 'vitest'; vi.mock('./service', () => ({ run: vi.fn() }));" }], focusPath: "action.test.ts", expectedCount: 1, public: true },

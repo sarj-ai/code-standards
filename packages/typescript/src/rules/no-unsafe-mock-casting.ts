@@ -16,6 +16,7 @@ import { parentOf } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { importSpecifierName } from "../utils/import-specifier-name.js";
 import { isGeneratedFile } from "../utils/paths.js";
+import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "../utils/test-mock-provenance.js";
 import { retainsNamedTypeUses, typeBinding } from "../utils/type-binding.js";
 import { isUnusedPrivateBinding } from "../utils/unused-private-binding.js";
 
@@ -84,6 +85,10 @@ export default defineRule({
     }
 
     function checkAssertion(node: Assertion): void {
+      if (isMockFactoryReturnType(node.typeAnnotation)) {
+        context.report({ node, messageId: "unsafeMockCast" });
+        return;
+      }
       // A mock type only resolves through a recorded import binding.
       if (directBindings.size === 0 && namespaceBindings.size === 0) return;
       if (isMockTypeReference(node.typeAnnotation)) {
@@ -104,6 +109,17 @@ export default defineRule({
         return binding !== null && namespaceBindings.has(binding);
       }
       return false;
+    }
+
+    function isMockFactoryReturnType(node: ESTree.TSType): boolean {
+      if (node.type !== "TSTypeReference" || node.typeName.type !== "Identifier" ||
+        node.typeName.name !== "ReturnType" || resolve(node.typeName) !== null ||
+        node.typeArguments?.params.length !== 1) return false;
+      const query = node.typeArguments.params[0];
+      if (query?.type !== "TSTypeQuery" || query.exprName.type !== "TSQualifiedName" ||
+        query.exprName.left.type !== "Identifier" || query.exprName.right.name !== "fn") return false;
+      const left = query.exprName.left;
+      return importedTestMockNamespace(context.sourceCode, left) !== null || isUnshadowedTestMockGlobal(context.sourceCode, left);
     }
 
     return {

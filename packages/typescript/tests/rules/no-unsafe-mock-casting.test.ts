@@ -3,6 +3,10 @@ import { ruleTester } from "./_tester.js";
 
 ruleTester().run("no-unsafe-mock-casting", rule, {
   valid: [
+    { name: "allows mock factory return type annotations", code: "import { vi } from 'vitest'; let writeText: ReturnType<typeof vi.fn>; export function calls(fetchMock: ReturnType<typeof vi.fn>) { return fetchMock.mock.calls; }" },
+    { name: "ignores a shadowed mock factory return type", code: "function build(vi: { fn(): () => void }, value: unknown) { return value as ReturnType<typeof vi.fn>; }" },
+    { name: "ignores an unrelated mock factory return type", code: "import { vi } from './builder'; export const m = value as ReturnType<typeof vi.fn>;" },
+    { name: "ignores a locally defined ReturnType", code: "import { vi } from 'vitest'; type ReturnType<T> = T; export const m = value as ReturnType<typeof vi.fn>;" },
     { name: "local types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture(value: () => void) { type Mock = () => void; return value as Mock; }" },
     { name: "generic types still shadow imported mock types", code: "import type { Mock } from 'vitest'; function fixture<Mock>(value: unknown) { return value as Mock; }" },
     { name: "local namespaces still shadow imported mock namespaces", code: "import type * as mocks from 'vitest'; namespace Fixtures { export namespace mocks { export type Mock = () => void; } export function fixture(value: () => void) { return value as mocks.Mock; } }" },
@@ -40,6 +44,9 @@ ruleTester().run("no-unsafe-mock-casting", rule, {
     { name: "ignores declaration files under inherited generated ownership", filename: "contract.d.ts", code: "import type { Mock } from 'vitest'; const fake = value as Mock;" },
   ],
   invalid: [
+    { name: "reports imported mock factory return type assertions", code: "import { vi } from 'vitest'; declare const client: { read(): string }; (client.read as ReturnType<typeof vi.fn>).mockReturnValue('x');", output: null, errors: [{ messageId: "unsafeMockCast" }] },
+    { name: "reports instantiated mock factory return type assertions", code: "import { vi } from 'vitest'; type Impl = () => string; export const fetchMock = () => fetch as unknown as ReturnType<typeof vi.fn<Impl>>;", output: null, errors: [{ messageId: "unsafeMockCast" }] },
+    { name: "reports global mock factory return type assertions", code: "declare const read: () => string; export const m = read as ReturnType<typeof jest.fn>;", errors: [{ messageId: "unsafeMockCast" }] },
     { name: "keeps a sole imported mock binding live", code: "import type { Mock } from 'vitest'; declare const value: unknown; const fake = value as Mock;", output: null, errors: [{ messageId: "unsafeMockCast" }] },
     { name: "does not let simultaneous assertions witness each other", code: "import type { Mock } from 'vitest'; declare const value: unknown; const first = value as Mock; const second = value as Mock;", output: null, errors: [{ messageId: "unsafeMockCast" }, { messageId: "unsafeMockCast" }] },
     { name: "does not use another erasable variable annotation as a witness", code: "import type { Mock } from 'vitest'; declare const value: unknown; const producer: Mock = value; const fake = value as Mock;", output: null, errors: [{ messageId: "unsafeMockCast" }] },

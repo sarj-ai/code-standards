@@ -16,6 +16,7 @@ import { parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isPresent } from "../utils/is-present.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { stableConstInitializer } from "../utils/stable-value-binding.js";
 import { getPropertyName } from "../utils/static-string.js";
 import { importedTestMockNamespace, isUnshadowedTestMockGlobal } from "../utils/test-mock-provenance.js";
 import { retainsNamedTypeUses } from "../utils/type-binding.js";
@@ -29,6 +30,16 @@ const SIMPLE_LITERAL_TYPES: ReadonlySet<string> = new Set(["string", "number", "
 function containsMockFactory(node: Node, source: SourceCode): boolean {
   node = unwrapExpression(node);
   if (isMockFactory(node, source)) return true;
+  if (node.type === "CallExpression") {
+    const callee = unwrapExpression(node.callee);
+    if (callee.type === "MemberExpression" && getPropertyName(callee)?.startsWith("mock")) {
+      return containsMockFactory(callee.object, source);
+    }
+  }
+  if (node.type === "Identifier") {
+    const initializer = stableConstInitializer(source, node);
+    return initializer !== null && containsMockFactory(initializer.value, source);
+  }
   if (node.type === "ObjectExpression") {
     return node.properties.some((property) =>
       property.type === "Property"

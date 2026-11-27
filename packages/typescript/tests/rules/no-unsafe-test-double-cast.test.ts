@@ -6,6 +6,10 @@ const RULE_TESTER = ruleTester();
 
 RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
   valid: [
+    { name: "keeps mutable mock bindings opaque", filename: "service.test.ts", code: "import { vi } from 'vitest'; let read = vi.fn(); export const client = { read } as unknown as Client;" },
+    { name: "keeps parameter bindings opaque", filename: "service.test.ts", code: "import { vi } from 'vitest'; export function build(read: () => string) { return { read } as unknown as Client; }" },
+    { name: "ignores unrelated configuration chains", filename: "service.test.ts", code: "export const client = { read: builder.fn().mockReturnValue(1) } as unknown as Client;" },
+    { name: "keeps nonconfiguration calls opaque", filename: "service.test.ts", code: "import { vi } from 'vitest'; export const client = { read: vi.fn().bind(null) } as unknown as Client;" },
     { name: "ignores a parameter named vi", filename: "service.test.ts", code: "function build(vi: LocalBuilder) { return { read: vi.fn() } as unknown as Client; }" },
     { name: "ignores a local jest object", filename: "service.test.ts", code: "const jest = localBuilder; const client = { read: jest.fn() } as unknown as Client;" },
     { name: "ignores an unrelated vi import", filename: "service.test.ts", code: "import { vi } from './builder'; const client = { read: vi.fn() } as unknown as Client;" },
@@ -19,6 +23,9 @@ RULE_TESTER.run("no-unsafe-test-double-cast", rule, {
     { name: "ignores generated files", filename: "tests/generated/service.test.ts", code: "import { vi } from 'vitest'; const client = { read: vi.fn() } as unknown as Client;" },
   ],
   invalid: [
+    { name: "reports mock configuration chains", filename: "service.test.ts", code: "import { vi } from 'vitest'; export const request = { formData: vi.fn().mockResolvedValue(body) } as unknown as Request;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+    { name: "reports const mock bindings in shorthand properties", filename: "service.test.ts", code: "import { vi } from 'vitest'; const getToken = vi.fn().mockRejectedValue(error); export const service = new Adapter({ getToken } as unknown as Services);", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
+    { name: "reports const mock object bindings", filename: "service.test.ts", code: "import { vi } from 'vitest'; const slack = { post: vi.fn() }; use(slack as unknown as SlackClient);", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "preserves a collaborator type whose only use would disappear", filename: "service.test.ts", code: "import { vi } from 'vitest'; interface Client { read(): string } const client = { read: vi.fn() } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
     { name: "does not let simultaneous doubles witness the same type", filename: "service.test.ts", code: "import { vi } from 'vitest'; interface Client { read(): string } const first = { read: vi.fn() } as unknown as Client; const second = { read: vi.fn() } as unknown as Client;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }, { messageId: "noUnsafeTestDoubleCast" }] },
     { name: "checks a generic type erased despite an exported collaborator", filename: "service.test.ts", code: "import { vi } from 'vitest'; interface Client<T> { read(): T } export type KeptClient = Client<string>; type OnlyHere = string; const client = { read: vi.fn() } as unknown as Client<OnlyHere>;", output: null, errors: [{ messageId: "noUnsafeTestDoubleCast" }] },
