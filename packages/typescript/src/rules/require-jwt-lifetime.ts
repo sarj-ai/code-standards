@@ -6,9 +6,10 @@
  */
 
 import { defineRule, type ESTree, type Node } from "../types.js";
-import { unwrapExpression } from "../utils/ast.js";
+import { outerExpression, parentOf, unwrapExpression } from "../utils/ast.js";
 import { docsUrl } from "../utils/docs-url.js";
 import { isGeneratedFile, isTestFile } from "../utils/paths.js";
+import { writtenMember } from "../utils/stable-value-binding.js";
 import { findVariable, getPropertyName } from "../utils/static-string.js";
 
 const NAME = "require-jwt-lifetime";
@@ -75,6 +76,27 @@ export default defineRule({
       before() {
         if (isGeneratedFile({ filename: context.filename, cwd: context.cwd }, context.sourceCode.text) || isTestFile(context.filename)) return false;
         return undefined;
+      },
+      VariableDeclarator(node) {
+        const declaration = parentOf(node);
+        if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" || node.id.type !== "ObjectPattern" || node.init === null) return;
+        const property = node.id.properties.find(property => property.type === "Property" && !property.computed && getPropertyName(property) === "payload");
+        if (property?.type !== "Property" || property.value.type !== "Identifier") return;
+        const init = unwrapExpression(node.init);
+        if (init.type !== "AwaitExpression") return;
+        const call = unwrapExpression(init.argument);
+        if (call.type !== "CallExpression" || !isVerifier(call.callee) || !missingLifetime(call.arguments[2])) return;
+        const local = property.value.name;
+        const payload = context.sourceCode.getDeclaredVariables(node).find(variable => variable.name === local);
+        const references = payload?.references.filter(reference => reference.init !== true) ?? [];
+        if (!references.some(reference => reference.isRead()) || !references.every(reference => {
+          const value = outerExpression(reference.identifier);
+          const member = parentOf(value);
+          if (member?.type !== "MemberExpression" || member.object !== value || writtenMember(member)) return false;
+          const name = getPropertyName(member);
+          return name !== null && name !== "exp" && name !== "iat" && name !== "nbf";
+        })) return;
+        context.report({ node: call, messageId: "lifetime" });
       },
       ReturnStatement(node) { inspect(node.argument); },
       ArrowFunctionExpression(node) { if (node.expression) inspect(node.body); },

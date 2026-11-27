@@ -313,12 +313,42 @@ export default defineRule({
       if (!blobArmApplies) {
         return false;
       }
-      const name = rawBlobValueName(value);
+      const name = rawBlobValueName(value) ?? requestBodyAlias(value);
       if (name !== null) {
         context.report({ node, messageId: "noRawBodyInLog", data: { name } });
         return true;
       }
       return false;
+    }
+
+    function requestBodyAlias(value: Node): string | null {
+      if (value.type !== "Identifier") return null;
+      const variable = findVariable(context.sourceCode.getScope(value), value.name);
+      const definition = variable?.defs.length === 1 ? variable.defs[0] : undefined;
+      const declaration = definition?.node;
+      if (definition?.type !== "Variable" || definition.parent?.type !== "VariableDeclaration" ||
+        definition.parent.kind !== "const" || declaration?.type !== "VariableDeclarator" ||
+        declaration.id.type !== "Identifier" || declaration.init === null ||
+        variable?.references.some(reference => reference.isWrite() && reference.init !== true)) return null;
+      const init = unwrapExpression(declaration.init);
+      if (init.type !== "AwaitExpression") return null;
+      const call = unwrapExpression(init.argument);
+      if (call.type !== "CallExpression" || call.optional || call.arguments.length !== 0) return null;
+      const member = unwrapExpression(call.callee);
+      if (member.type !== "MemberExpression" || member.computed || member.optional || member.object.type !== "Identifier") return null;
+      const method = getPropertyName(member);
+      if (method !== "text" && method !== "json" && method !== "formData") return null;
+      const receiver = member.object;
+      const binding = findVariable(context.sourceCode.getScope(receiver), receiver.name);
+      const name = binding?.defs.length === 1 ? binding.defs[0]?.name : undefined;
+      const annotation = name?.type === "Identifier" ? name.typeAnnotation?.typeAnnotation : undefined;
+      if (annotation?.type !== "TSTypeReference" || annotation.typeName.type !== "Identifier") return null;
+      const type = annotation.typeName;
+      const imported = findVariable(context.sourceCode.getScope(type), type.name)?.defs[0];
+      const request = type.name === "Request" && resolvesToGlobal(type) ||
+        imported?.type === "ImportBinding" && imported.parent?.type === "ImportDeclaration" && imported.parent.source.value === "next/server" &&
+        imported.node.type === "ImportSpecifier" && imported.node.imported.type === "Identifier" && imported.node.imported.name === "NextRequest";
+      return request ? `${receiver.name}.${method}()` : null;
     }
 
     function reportSecretProperty(prop: ESTree.ObjectProperty): boolean {

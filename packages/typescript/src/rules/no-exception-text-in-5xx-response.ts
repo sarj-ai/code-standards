@@ -71,6 +71,7 @@ export default defineRule({
   createOnce(context) {
     let candidates: { readonly node: ESTree.CallExpression; readonly errors: readonly Variable[] }[] = [];
     let changedErrors = new Set<Variable>();
+    let aliasOrigin = new Map<Variable, Variable>();
     let stableBindings = new WeakMap<Variable, boolean>();
     let referenceIdentifiers: WeakSet<Node> | undefined;
     let uncertainSerialization = false;
@@ -112,7 +113,7 @@ export default defineRule({
       const clause = definition?.node;
       return definition?.type === "CatchClause" && clause?.type === "CatchClause" && clause.param?.type === "Identifier" &&
         variable != null && stable(variable)
-        ? variable : null;
+        ? variable : variable !== null && aliasOrigin.has(variable) ? variable : null;
     }
 
     function responseFactory(node: Node): boolean {
@@ -221,7 +222,11 @@ export default defineRule({
         uncertainSerialization = true;
       }
       const error = caughtValue(member.object);
-      if (error !== null) changedErrors.add(error);
+      if (error !== null) {
+        changedErrors.add(error);
+        const origin = aliasOrigin.get(error);
+        if (origin !== undefined) changedErrors.add(origin);
+      }
     }
 
     /** Passing a factory or caught object to another call loses local mutation proof. */
@@ -238,6 +243,7 @@ export default defineRule({
           isGeneratedFile({ filename: context.filename, cwd: context.cwd }, sourceCode.text)) return false;
         candidates = [];
         changedErrors = new Set();
+        aliasOrigin = new Map();
         stableBindings = new WeakMap();
         referenceIdentifiers = undefined;
         uncertainSerialization = false;
@@ -248,15 +254,32 @@ export default defineRule({
       CatchClause(node: ESTree.CatchClause): void {
         if (node.param?.type === "Identifier") catchNames.add(node.param.name);
       },
+      VariableDeclarator(node: ESTree.VariableDeclarator): void {
+        const declaration = parentOf(node);
+        if (declaration?.type !== "VariableDeclaration" || declaration.kind !== "const" ||
+          node.id.type !== "Identifier" || node.init === null) return;
+        const origin = caughtValue(node.init);
+        const alias = binding(node.id);
+        if (origin === null || aliasOrigin.has(origin) || alias === null) return;
+        catchNames.add(node.id.name);
+        aliasOrigin.set(alias, origin);
+      },
       Identifier(node: ESTree.IdentifierReference): void {
         if ((!catchNames.has(node.name) && !responseNames.has(node.name)) || !valueReference(node) || insideTypeQuery(node)) return;
         const error = caughtValue(node);
         if (error === null && !responseFactory(node)) return;
         const value = outerExpression(node);
         const parent = parentOf(value);
-        if (parent === null || inertUse(parent, value)) return;
+        if (parent === null || inertUse(parent, value) ||
+          (parent.type === "VariableDeclarator" && parent.id.type === "Identifier" &&
+            ((parent.id === value && error !== null && aliasOrigin.has(error)) ||
+              (parent.init === value && error !== null && aliasOrigin.get(binding(parent.id)!) === error)))) return;
         // Aliases, storage and unknown consumers can mutate or sanitize this object.
-        if (error !== null) changedErrors.add(error);
+        if (error !== null) {
+          changedErrors.add(error);
+          const origin = aliasOrigin.get(error);
+          if (origin !== undefined) changedErrors.add(origin);
+        }
         else uncertainSerialization = true;
       },
       AssignmentExpression(node: ESTree.AssignmentExpression): void { recordWrite(node.left); },
@@ -269,7 +292,11 @@ export default defineRule({
         const callee = unwrapExpression(node.callee);
         if (callee.type !== "MemberExpression") return;
         const error = caughtValue(callee.object);
-        if (error !== null) changedErrors.add(error);
+        if (error !== null) {
+          changedErrors.add(error);
+          const origin = aliasOrigin.get(error);
+          if (origin !== undefined) changedErrors.add(origin);
+        }
         if (!responseFactory(callee.object) || staticPropertyName(callee, context.sourceCode) !== "json" ||
           node.arguments.length !== 2 || !directlyReturned(node)) return;
         const [payload, options] = node.arguments;
@@ -281,7 +308,7 @@ export default defineRule({
         if (uncertainSerialization) return;
         for (const node of serverActionErrorResults(context.sourceCode)) context.report({ node, messageId: "serverActionExceptionText" });
         for (const candidate of candidates) {
-          if (candidate.errors.some((error) => !changedErrors.has(error))) {
+          if (candidate.errors.some((error) => !changedErrors.has(error) && !changedErrors.has(aliasOrigin.get(error)!))) {
             context.report({ node: candidate.node, messageId: "exceptionText" });
           }
         }
