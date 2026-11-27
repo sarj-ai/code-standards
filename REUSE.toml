@@ -1,0 +1,239 @@
+version = 1
+
+# Sarj-authored files use MIT; upstream notices remain attributed below.
+# Overrides on authored tests disambiguate copyright strings used as test input.
+
+[[annotations]]
+path = "**"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/effects.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2025 Nick van Dyke"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/jsdoc-js.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (C) 2012 Yusuke Suzuki (twitter: @Constellation) and other contributors.", "Copyright (C) 2012-2017 by Ingvar Stepanyan", "Copyright (C) 2012-2022 by various contributors (see AUTHORS)", "Copyright (c) 2013, Joel Feenstra", "Copyright (c) 2014 Sergii Iavorskyi", "Copyright (c) 2018, Gajus Kuizinas (http://gajus.com/)", "Copyright (c) 2021 Brett Zamir", "Copyright (c) 2021 Simon Seyock", "Copyright (c) Open JS Foundation", "Copyright JS Foundation and other contributors, https://js.foundation", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/next.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2025 Vercel, Inc.", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/node-test.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/playwright.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER", "Copyright (c) 2024 Mark Skelton", "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/query.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2019 typescript-eslint and other contributors", "Copyright (c) 2021-present Tanner Linsley", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/react-correctness.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2015-2021 Ole Michelsen", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2019 typescript-eslint and other contributors", "Copyright (c) 2021 Gabriel Vergnaud", "Copyright (c) 2023 Gustavo Guichard", "Copyright (c) 2023 Rel1cx and Other Contributors", "Copyright (c) 2025 Colin McDonnell", "Copyright contributors", "JoshuaKGoldberg", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/react-js.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER", "Copyright (C) 2013 Jordan Harband", "Copyright (C) 2014 Jordan Harband", "Copyright (C) 2015 Jordan Harband", "Copyright (c) 2012 James Halliday", "Copyright (c) 2013 James Halliday", "Copyright (c) 2013 Raynos.", "Copyright (c) 2014 Dave Justice", "Copyright (c) 2014 Jordan Harband", "Copyright (c) 2014 Yannick Croissant", "Copyright (c) 2015 Javier Blanco", "Copyright (c) 2015 Jordan Harband", "Copyright (c) 2016 Jordan Harband", "Copyright (c) 2017 ECMAScript Shims", "Copyright (c) 2019 Jordan Harband", "Copyright (c) 2020 Jordan Harband", "Copyright (c) 2021 Inspect JS", "Copyright (c) 2022 ECMAScript Shims", "Copyright (c) 2022 Inspect JS", "Copyright (c) 2022 Jordan Harband", "Copyright (c) 2023 Jordan Harband", "Copyright (c) 2024 ECMAScript Shims", "Copyright (c) 2024 Jordan Harband", "Copyright (c) 2025 Jordan Harband", "Copyright (c) 2026 Jordan Harband", "Copyright (c) Isaac Z. Schlueter and Contributors", "Copyright (c) Jordan Harband and contributors", "The estraverse contributors", "copyright notice and this permission notice appear in all copies."]
+SPDX-License-Identifier = "BSD-2-Clause AND ISC AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/regexp.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2014 Sergii Iavorskyi", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2020 Michael Schmidt", "Copyright (c) 2020 Yosuke Ota", "Copyright (c) 2021 Michael Schmidt", "Copyright (c) 2021 Simon Seyock", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/security.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER", "Copyright (c) 2017 Dmitry Soshnikov", "Copyright 2015 &yet, LLC", "Copyright 2019-present is held by the authors of the safe-regex module.", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/testing-library.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2019 Mario Beltrán Alarcón", "Copyright (c) 2019 typescript-eslint and other contributors", "Copyright contributors", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/unicorn-js.js"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2026 sarj-ai (bundle adapters)", "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER", "Copyright (c) 2013 Blake Embrey (hello@blakeembrey.com)", "Copyright (c) 2013–2025 Denis Pushkarev (zloirock.ru)", "Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2025–2026 CoreJS Company (core-js.io)", "Copyright (c) Felix Böhm", "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)", "Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors", "Copyright 2018 Kilian Valkhof", "Copyright contributors", "copyright and certain other rights. Our licenses are", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND BSD-2-Clause AND CC-BY-4.0 AND ISC AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/THIRD_PARTY_NOTICES.txt"
+precedence = "override"
+SPDX-FileCopyrightText = ["Microsoft", "COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER", "Copyright (C) 2012 Yusuke Suzuki (twitter: @Constellation) and other contributors.", "Copyright (C) 2012-2017 by Ingvar Stepanyan", "Copyright (C) 2012-2022 by various contributors (see AUTHORS)", "Copyright (C) 2013 Jordan Harband", "Copyright (C) 2014 Jordan Harband", "Copyright (C) 2015 Jordan Harband", "Copyright (c) 2012 James Halliday", "Copyright (c) 2013 Blake Embrey (hello@blakeembrey.com)", "Copyright (c) 2013 James Halliday", "Copyright (c) 2013 Raynos.", "Copyright (c) 2013, Joel Feenstra", "Copyright (c) 2013–2025 Denis Pushkarev (zloirock.ru)", "Copyright (c) 2014 Dave Justice", "Copyright (c) 2014 Jordan Harband", "Copyright (c) 2014 Sergii Iavorskyi", "Copyright (c) 2014 Yannick Croissant", "Copyright (c) 2015 Javier Blanco", "Copyright (c) 2015 Jordan Harband", "Copyright (c) 2015-2021 Ole Michelsen", "Copyright (c) 2016 Jordan Harband", "Copyright (c) 2017 Dmitry Soshnikov", "Copyright (c) 2017 ECMAScript Shims", "Copyright (c) 2017 Sergey Rubanov (https://github.com/chicoxyzzy)", "Copyright (c) 2018 Toru Nagashima", "Copyright (c) 2018, Gajus Kuizinas (http://gajus.com/)", "Copyright (c) 2019 Jordan Harband", "Copyright (c) 2019 Mario Beltrán Alarcón", "Copyright (c) 2019 typescript-eslint and other contributors", "Copyright (c) 2020 Jordan Harband", "Copyright (c) 2020 Michael Schmidt", "Copyright (c) 2020 Yosuke Ota", "Copyright (c) 2021 Brett Zamir", "Copyright (c) 2021 Gabriel Vergnaud", "Copyright (c) 2021 Inspect JS", "Copyright (c) 2021 Michael Schmidt", "Copyright (c) 2021 Simon Seyock", "Copyright (c) 2021-present Tanner Linsley", "Copyright (c) 2022 ECMAScript Shims", "Copyright (c) 2022 Inspect JS", "Copyright (c) 2022 Jordan Harband", "Copyright (c) 2023 Gustavo Guichard", "Copyright (c) 2023 Jordan Harband", "Copyright (c) 2023 Rel1cx and Other Contributors", "Copyright (c) 2024 ECMAScript Shims", "Copyright (c) 2024 Jordan Harband", "Copyright (c) 2024 Mark Skelton", "Copyright (c) 2025 Colin McDonnell", "Copyright (c) 2025 Jordan Harband", "Copyright (c) 2025 Nick van Dyke", "Copyright (c) 2025 Vercel, Inc.", "Copyright (c) 2025–2026 CoreJS Company (core-js.io)", "Copyright (c) 2026 Jordan Harband", "Copyright (c) Felix Böhm", "Copyright (c) Isaac Z. Schlueter and Contributors", "Copyright (c) Jordan Harband and contributors", "Copyright (c) Open JS Foundation", "Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)", "Copyright 2014 Andrey Sitnik <andrey@sitnik.es> and other contributors", "Copyright 2015 &yet, LLC", "Copyright 2018 Kilian Valkhof", "Copyright 2019-present is held by the authors of the safe-regex module.", "Copyright JS Foundation and other contributors, https://js.foundation", "Copyright contributors", "JoshuaKGoldberg", "The estraverse contributors", "copyright and certain other rights. Our licenses are", "copyright license to reproduce, prepare Derivative Works of,", "copyright notice and this permission notice appear in all copies.", "copyright notice that is included in or attached to the work"]
+SPDX-License-Identifier = "Apache-2.0 AND BSD-2-Clause AND BSD-3-Clause AND CC-BY-4.0 AND ISC AND MIT"
+
+[[annotations]]
+path = "packages/typescript/src/upstream/next-LICENSE.txt"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2025 Vercel, Inc."]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/action-parser.cjs"
+precedence = "closest"
+SPDX-FileCopyrightText = ["GitHub", "2017 Brady Holt", "Eemeli Aro"]
+SPDX-License-Identifier = "MIT AND ISC"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/action-parser/LICENSE.actions"
+precedence = "closest"
+SPDX-FileCopyrightText = ["GitHub"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/action-parser/LICENSE.cronstrue"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2017 Brady Holt"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/action-parser/LICENSE.yaml"
+precedence = "closest"
+SPDX-FileCopyrightText = ["Eemeli Aro"]
+SPDX-License-Identifier = "ISC"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/schemas/skaffold-v4beta7.json"
+precedence = "closest"
+SPDX-FileCopyrightText = ["The Skaffold Authors"]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/schemas/SKAFFOLD-LICENSE"
+precedence = "override"
+SPDX-FileCopyrightText = ["The Skaffold Authors"]
+SPDX-License-Identifier = "Apache-2.0"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/schemas/google-build-v1-schema.json"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2011 Google Inc."]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "packages/standards/src/sarj_standards/configs/schemas/google-build-v1.LICENSE"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2011 Google Inc."]
+SPDX-License-Identifier = "BSD-3-Clause"
+
+[[annotations]]
+path = "packages/typescript/src/utils/directive-comments.ts"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2016 Toru Nagashima"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/src/utils/has-side-effect.ts"
+precedence = "closest"
+SPDX-FileCopyrightText = ["2018 Toru Nagashima"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/tests/rules/no-frontend-comments.test.ts"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/tests/rule-docs.test.ts"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/rules/test_comments.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/rules/test_no_comment_cruft.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/tests/rules/no-test-comments.test.ts"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/rules/test_no_test_comments.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/test_autofix_module_docstrings.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/sql/tests/rules/test_no_migration_comments.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/rules/test_excessive_commentary.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/test_autofix_commentary_boundary.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/standards/tests/text_rules/test_concise_shell_prose.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/python/tests/rules/test_prose_budget.py"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = "packages/typescript/tests/rules/no-comment-cruft.test.ts"
+precedence = "override"
+SPDX-FileCopyrightText = ["2026 sarj-ai"]
+SPDX-License-Identifier = "MIT"
+
+# These authored files contain literal SPDX tags as parser or test data.
+[[annotations]]
+path = ["packages/iac/tests/test_autofix_policy_profiles.py", "packages/iac/tests/test_declaration_fixes.py", "packages/sql/tests/test_autofix_empty_comments.py", "packages/standards/tests/test_cloudbuild_autofix.py", "packages/standards/tests/test_terraform_format.py", "packages/typescript/src/rules/no-test-comments.ts", "packages/typescript/src/utils/comments.ts", "packages/typescript/tests/rules/no-log-only-catch.test.ts"]
+precedence = "override"
+SPDX-FileCopyrightText = "2026 sarj-ai"
+SPDX-License-Identifier = "MIT"

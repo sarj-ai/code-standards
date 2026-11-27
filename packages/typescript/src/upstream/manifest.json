@@ -63,17 +63,18 @@
   ],
   "sourceLockSha256": "d35577444817a77219633a1c731fd98f7eac477124938c00ca4ca71c906a5fd3",
   "files": {
-    "effects.js": "c8fc133f56df9a144d15c9d791e1e0b7602c028dd2222167dc87e409dba7074a",
-    "jsdoc-js.js": "2d66af1a28176d3a8916dff805f136bf7b2f2c3f1949625504c7031e8f070d03",
-    "next.js": "7692c991fafcf34b9e6616289de158f3614f2036e2ffcaa954fce379efc25e83",
-    "node-test.js": "3336c85999e20dc0f8f3b491bfd92ee95d9bbdbfddfd9dcd131dc37c44f68f6e",
-    "playwright.js": "5c6d2ec4149c324523807b8fcf5eaf6ebcfad3d6131c46a6cf0a8699854805f6",
-    "query.js": "b46a13143454ea1056dd23771e89662043c852628b36f4edd53e30f56200c700",
-    "react-correctness.js": "f57c223ee81b757c367f022fb388e8831228ca04582b83858beb14a4f38a1482",
-    "react-js.js": "3b48c39f803313623f4c08f455eda06af0d73afe263ee01ae1f557c1b5bcdecf",
-    "regexp.js": "b3bb6fc83fa30e798c757172c540372a6be797456d8f54fd7040013abc26ecc0",
-    "security.js": "c992ff825e072cc37be8047f14a04b8984fd3c8b076b166032f1a8f016562210",
-    "testing-library.js": "48488f1c952ed4bb4bcaf0b61a7f14cce69bfd38a0dcd16bdb738517b4eae6b7",
-    "unicorn-js.js": "8632a1ee90924d6b7ba238f4606ea2fe626d02ec45613d197395ec6a73f096ad"
+    "effects.js": "ae3d034680cfac1ef1898ce1677e253b62c72eaebab185d324fc743b129503ac",
+    "jsdoc-js.js": "9e5850f2d281ecb96aa9b524ac503e5929530e3c9d296b9b50fb224178e6e6bd",
+    "next.js": "b701bb25486f4d21254c701f591758861992b85e5ab15390c1b8bab4fd6e7db0",
+    "node-test.js": "b7ec8fba5b388002c4e171dd6ab57dff007e0bfc6b75ecc2b6deb4a349058ace",
+    "playwright.js": "6cd5fd230f79d7874de688bf7ceaf6a0aa9c7da70a2a76254c147515ae46463a",
+    "query.js": "90a2aa2ff8009131b63f571feb3c054b574725e82c05449bb5f56d0f1eed2c00",
+    "react-correctness.js": "cb86a3d909d34c63338bca8ef5ddd217544d96e49b9b3b693e0d077d29a8e682",
+    "react-js.js": "0a8ac0ce339f7e30db50edf2a67d074f0db980793b5254c1bffb8595f5c3e47b",
+    "regexp.js": "7fce99a9f6832573e7ece8f93e33f61fe18f302379dbc66f91f9025344e248ce",
+    "security.js": "eee0b8694a40f2bf99ea24bb437f8813a8597a679740a66984f05563ea54d776",
+    "testing-library.js": "c6787ed2199e04f6e1c10324cdc3cd14564cd2592aeb0c84de71de3e3faf5fe5",
+    "unicorn-js.js": "c5927a1d8fcf23c344ed57604127cb51f66316ff3c5d1325b7b7dcec4102ca22",
+    "THIRD_PARTY_NOTICES.txt": "9d15a5452b7e5bb178d1f5eb196582fbf3adbe2c3d795fa969012d92034c15d4"
   }
 }
