@@ -28,7 +28,8 @@ def test_rejects_executor_and_debugger_reference_escape(name: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["eval", "exec", "breakpoint", "locals", "globals", "compile", "__import__", "getattr", "delattr"]
+    "name",
+    ["eval", "exec", "breakpoint", "locals", "globals", "compile", "__import__", "getattr", "setattr", "delattr"],
 )
 def test_rejects_builtins_module_aliases(name: str) -> None:
     assert _lines(f"import builtins as native\nnamespace = native\nnamespace.{name}(value)\n") == [3]
@@ -46,6 +47,9 @@ def test_rejects_builtins_module_aliases(name: str) -> None:
         "getattr(*values, 'name')\n",
         "getattr.__call__(value, name)\n",
         "def reader(callback=getattr):\n    return callback\n",
+        "setattr(value, field, replacement)\n",
+        "update = setattr\nupdate(value, 'name', replacement)\n",
+        "result = setattr(value, 'name', replacement)\n",
         "from builtins import exec as run\nrun(payload)\n",
         "from builtins import eval as run\n",
     ],
@@ -60,11 +64,13 @@ def test_rejects_patterns_without_a_native_owner(source: str) -> None:
         "getattr(value, 'name')\n",
         "getattr(value, '__class__')\n",
         "getattr(value, 'ſ')\n",
+        "setattr(value, 'name', replacement)\n",
         "exec(payload)\n",
         "breakpoint()\n",
         "eval(payload)\n",
         "callback = eval\n",
         "import builtins as native\nnative.getattr(value, name)\n",
+        "import builtins as native\nnative.setattr(value, field, replacement)\n",
         "from builtins import getattr as lookup\nlookup(value, name)\n",
         "from builtins import breakpoint as pause\npause()\n",
     ],
@@ -123,6 +129,8 @@ def test_shadowed_attribute_deletion_remains_unrelated_to_the_builtin_policy() -
     [
         "def getattr(value, name):\n    return value\ngetattr(value, name)\n",
         "def reader(getattr):\n    return getattr(value, name)\n",
+        "def writer(setattr):\n    return setattr(value, name, replacement)\n",
+        "object.__setattr__(value, 'name', replacement)\n",
         "from application import getattr\ngetattr(value, name)\n",
         "class Reader:\n    def getattr(self, name):\n        return name\nReader().getattr(name)\n",
         "read = lambda getattr: getattr(value, name)\n",

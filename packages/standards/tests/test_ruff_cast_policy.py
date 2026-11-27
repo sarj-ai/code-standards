@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
 import sys
 from typing import TYPE_CHECKING
 
 import pytest
 
 from sarj_standards import api
+from sarj_standards._meta import RUFF_STRICT
 from sarj_standards.libs.adoption.manifest import ExclusionOverride, Manifest
 from sarj_standards.libs.diagnostics import Completion, TrustMode, baseline
 from sarj_standards.libs.linting.analysis import report_from_tools
@@ -61,9 +63,17 @@ def test_cast_ban_cannot_be_waived_by_source_comments(tmp_path: Path, source: st
     assert not baseline.is_baselineable(findings[0])
 
 
-def test_existing_import_baseline_cannot_authorize_future_casts(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from typing import cast  # ruff: ignore[banned-api]\nvalue = cast(object, 1)\n",
+        "from typing import no_type_check  # ruff: ignore[banned-api]\n@no_type_check\ndef read(): ...\n",
+    ],
+    ids=["cast", "no-type-check"],
+)
+def test_baseline_cannot_authorize_required_apis(tmp_path: Path, source: str) -> None:
     path = tmp_path / "app.py"
-    path.write_text("from typing import cast  # ruff: ignore[banned-api]\nvalue = cast(object, 1)\n", encoding="utf-8")
+    path.write_text(source, encoding="utf-8")
     (tmp_path / "ruff.toml").write_text(_CONFIG, encoding="utf-8")
     tools = analyze_external([str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}))
     report = report_from_tools(tmp_path, tools)
@@ -74,6 +84,57 @@ def test_existing_import_baseline_cannot_authorize_future_casts(tmp_path: Path) 
 
     assert len(active.diagnostics) == 1
     assert '"diagnostics": []' in baseline.render(report.diagnostics)
+
+
+@pytest.mark.parametrize(
+    ("source", "qualified_name"),
+    [
+        ("from typing import no_type_check\n@no_type_check\ndef read(): ...\n", "typing.no_type_check"),
+        ("import typing as t\n@t.no_type_check  # noqa: TID251\ndef read(): ...\n", "typing.no_type_check"),
+        ("from typing import no_type_check as waive\n@waive\ndef read(): ...\n", "typing.no_type_check"),
+        (
+            "from typing_extensions import no_type_check as waive\n@waive\ndef read(): ...\n",
+            "typing_extensions.no_type_check",
+        ),
+        ("from typing import no_type_check_decorator\n", "typing.no_type_check_decorator"),
+    ],
+    ids=["direct", "module-alias-with-noqa", "import-alias", "extensions", "decorator-factory"],
+)
+def test_no_type_check_uses_the_required_ruff_policy(tmp_path: Path, source: str, qualified_name: str) -> None:
+    path = tmp_path / "app.py"
+    path.write_text(source, encoding="utf-8")
+    (tmp_path / "ruff.toml").write_text(_CONFIG, encoding="utf-8")
+
+    reports = analyze_external([str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}))
+
+    assert reports[0].completion is Completion.COMPLETE
+    (finding,) = reports[0].diagnostics
+    assert finding.rule_id == "TID251"
+    assert f"`{qualified_name}` is banned" in finding.message
+    assert not baseline.is_baselineable(finding)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("setattr(obj, 'x', 1)\n", ["B010"]),
+        ("import builtins\nbuiltins.setattr(obj, key, 1)\n", ["TID251"]),
+        ("import builtins\nbuiltins.setattr(obj, key, 1)  # noqa: TID251 -- runtime adapter\n", []),
+        ("object.__setattr__(obj, 'x', 1)\n", []),
+    ],
+    ids=["bare-constant", "qualified-dynamic", "reasoned-exception", "dunder"],
+)
+def test_setattr_policy_stays_in_the_preset(tmp_path: Path, source: str, expected: list[str]) -> None:
+    path = tmp_path / "app.py"
+    path.write_text(source, encoding="utf-8")
+    config = f'extend = {json.dumps(RUFF_STRICT.as_posix())}\n[lint]\nselect = ["B010", "TID251"]\n'
+    (tmp_path / "ruff.toml").write_text(config, encoding="utf-8")
+
+    reports = analyze_external([str(path)], root=tmp_path, trust=TrustMode.TRUSTED, capabilities=frozenset({"ruff"}))
+
+    assert reports[0].completion is Completion.COMPLETE
+    assert [finding.rule_id for finding in reports[0].diagnostics] == expected
+    assert all(baseline.is_baselineable(finding) for finding in reports[0].diagnostics)
 
 
 def test_cast_ban_uses_packaged_policy_despite_consumer_per_file_ignore(tmp_path: Path) -> None:
@@ -96,9 +157,11 @@ def test_cast_ban_uses_packaged_policy_despite_consumer_per_file_ignore(tmp_path
         "def cast(value):\n    return value\nvalue = cast(1)\n",
         "text = 'from typing import cast  # noqa: TID251'\n",
         "# from typing import cast\nvalue = 1\n",
+        "def no_type_check(f):\n    return f\n@no_type_check\ndef read(): ...\n",
+        "name = 'no_type_check'\n",
     ],
 )
-def test_other_api_exceptions_and_non_code_casts_remain_valid(tmp_path: Path, source: str) -> None:
+def test_required_policy_accepts_other_api_exceptions_and_unrelated_bindings(tmp_path: Path, source: str) -> None:
     path = tmp_path / "app.py"
     path.write_text(source, encoding="utf-8")
     (tmp_path / "ruff.toml").write_text(_CONFIG, encoding="utf-8")
