@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+from collections import defaultdict
 import math
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, ClassVar, final, override
@@ -51,7 +52,7 @@ class PreferMonotonicForElapsedTime(Rule):
             "A start used exclusively in direct while-loop duration comparisons against finite nonnegative literal thresholds blocks as an error. Returned, logged, and other elapsed-time measurements retain advisory findings because wall-clock telemetry can be intentional.",
             "Only an unconditional, single-assignment function-local start reading whose every read is the right operand of time.time() - start is reported.",
             "Only unshadowed module-level clock imports are resolved. Reassignment, additional timestamp uses, escapes, nested-scope reads, comprehensions, reflection, and mixed-clock expressions are excluded.",
-            "Instance fields, process or persisted deadlines, indirect end-clock readings, and generated files are not inferred. No automatic rewrite is provided.",
+            "A private `self._field` of one class is reported as a warning only when every write is None or time.time() and every read is a None check or the right operand of time.time() - self._field; other instance fields, process or persisted deadlines, indirect end-clock readings, and generated files are not inferred. No automatic rewrite is provided.",
         ),
         examples=(
             RuleExample(
@@ -111,7 +112,78 @@ class PreferMonotonicForElapsedTime(Rule):
                         message="this wall-clock reading is used only for elapsed time; use a monotonic clock for both the start and elapsed readings",
                     )
                 )
+        findings.extend(
+            Diagnostic(
+                path=context.path,
+                line=call.lineno,
+                col=call.col_offset + 1,
+                code=self.code,
+                severity=Severity.WARNING,
+                message="this wall-clock reading is used only for elapsed time; use a monotonic clock for both the start and elapsed readings",
+            )
+            for call in _elapsed_field_starts(context)
+            if not context.suppressions.is_suppressed(call.lineno, self.code)
+        )
         return sorted(findings, key=lambda finding: (finding.line, finding.col))
+
+
+def _elapsed_field_starts(context: PythonFileContext) -> Iterator[ast.Call]:
+    fields: defaultdict[str, list[ast.Attribute]] = defaultdict(list)
+    for node in context.nodes(ast.Attribute):
+        if node.attr.startswith("_") and not node.attr.startswith("__"):
+            fields[node.attr].append(node)
+    strings = {node.value for node in context.nodes(ast.Constant) if isinstance(node.value, str)}
+    for name, occurrences in fields.items():
+        owner = _field_class(context, occurrences[0])
+        if (
+            owner is None
+            or name in strings
+            or any(
+                (isinstance(node, ast.Name) and node.id == name) or (isinstance(node, ast.arg) and node.arg == name)
+                for node in ast.walk(owner)
+            )
+        ):
+            continue
+        yield from _field_starts(context, owner, occurrences)
+
+
+def _field_starts(context: PythonFileContext, owner: ast.ClassDef, occurrences: list[ast.Attribute]) -> list[ast.Call]:
+    starts: list[ast.Call] = []
+    measured = False
+    for node in occurrences:
+        if _field_class(context, node) is not owner:
+            return []
+        match node.value, node.ctx, context.parents.get(node):
+            case ast.Name(id="self"), ast.Store(), (
+                ast.Assign(targets=[target], value=ast.Call() as value)
+                | ast.AnnAssign(target=target, value=ast.Call() as value)
+            ) if target is node and _wall_clock(context, value):
+                starts.append(value)
+            case (
+                ast.Name(id="self"),
+                ast.Store(),
+                ast.Assign(targets=[target], value=ast.Constant(value=None))
+                | ast.AnnAssign(target=target, value=ast.Constant(value=None)),
+            ) | (
+                ast.Name(id="self"),
+                ast.Load(),
+                ast.Compare(left=target, ops=[ast.Is() | ast.IsNot()], comparators=[ast.Constant(value=None)]),
+            ) if target is node:
+                pass
+            case ast.Name(id="self"), ast.Load(), ast.BinOp(left=left, op=ast.Sub(), right=right) if (
+                right is node and _wall_clock(context, left)
+            ):
+                measured = True
+            case _:
+                return []
+    return starts if measured else []
+
+
+def _field_class(context: PythonFileContext, node: ast.AST) -> ast.ClassDef | None:
+    owner = context.parents.get(node)
+    while owner is not None and not isinstance(owner, ast.ClassDef):
+        owner = context.parents.get(owner)
+    return owner
 
 
 def _elapsed_starts(context: PythonFileContext, function: _Function) -> Iterator[ast.Call]:

@@ -101,6 +101,8 @@ def test_ignores_durations_read_from_names_attributes_or_calls(duration: str) ->
         ("_POLL_SECONDS: float = 0.5", "_POLL_SECONDS"),
         ("POLL_SECONDS = 1", "POLL_SECONDS * 2 + 0.5"),
         ("POLL_SECONDS = 60 * 5", "POLL_SECONDS"),
+        ("_DELAYS = (0.1, 0.4)", "_DELAYS[attempt]"),
+        ("DELAYS: tuple[float, ...] = (1, 60 * 2)", "DELAYS[0]"),
     ],
 )
 def test_reports_module_constants_bound_once_to_a_positive_literal(constant: str, duration: str) -> None:
@@ -124,6 +126,23 @@ def test_reports_module_constants_bound_once_to_a_positive_literal(constant: str
         ("POLL_SECONDS = 2\n\ndef configure(POLL_SECONDS):\n    pass", "POLL_SECONDS"),
         ("class Timing:\n    POLL_SECONDS = 2", "Timing.POLL_SECONDS"),
         ("if fast:\n    POLL_SECONDS = 2", "POLL_SECONDS"),
+        ("_DELAYS = [0.1, 0.4]", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, 0)", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, settings.slow)", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, 0.4)\n_DELAYS = (1, 2)", "_DELAYS[attempt]"),
+        ("from app.timing import DELAYS", "DELAYS[attempt]"),
+        ("delays = (0.1, 0.4)", "delays[attempt]"),
+        ("class Timing:\n    DELAYS = (0.1, 0.4)", "Timing.DELAYS[attempt]"),
+        ("_DELAYS = (0.1, 0.4)", "_DELAYS[attempt] * scale"),
+        ("_DELAYS = {0.1, 0.4}", "_DELAYS[attempt]"),
+        ("_DELAYS = {0: 0.1}", "_DELAYS[attempt]"),
+        ("_DELAYS = ()", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, -1)", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, '2')", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, True)", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, *(0.4,))", "_DELAYS[attempt]"),
+        ("_DELAYS = (0.1, 0.4)", "_DELAYS[:1]"),
+        ("_DELAYS = (0.1, 0.4)", "self._delays[attempt]"),
     ],
 )
 def test_ignores_constants_that_are_zero_configurable_or_ambiguous(module: str, duration: str) -> None:
