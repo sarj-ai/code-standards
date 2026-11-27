@@ -273,7 +273,7 @@ DESCRIPTORS: tuple[RuleDescriptor, ...] = (
         module="sarj_python_lint.rules.prefer_semantic_temporal_types",
         class_name="PreferSemanticTemporalTypes",
         code="SARJ573",
-        description="Use temporal types for model instants and durations with explicit units.",
+        description="Use semantic types for temporal fields and function boundaries.",
         aliases=(),
         enabled_by_default=True,
     ),
