@@ -5,6 +5,7 @@ import pytest
 from sarj_rule_contracts import EvaluationCase, ExpectedOutcome, Language
 
 from sarj_python_lint.rule_base import Severity
+from sarj_python_lint.rules._project_index import ProjectIndexSet
 from sarj_python_lint.rules.no_raw_source_text_test_oracle import NoRawSourceTextTestOracle
 
 
@@ -905,3 +906,143 @@ def test_module_collection_eager_writes_respect_scopes(declaration: str, expecte
         "    assert 'permissions:' in source\n"
     )
     assert len(check(source)) == expected
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'assert "iac/main.tf" in _strings(Path("scripts/check_paths.py"))',
+        'strings = {node.value for node in ast.walk(ast.parse(Path("scripts/check_paths.py").read_text())) if isinstance(node, ast.Constant)}\nassert any("main.tf" in value for value in strings)',
+        'strings = _strings(Path("scripts/check_paths.py"))\nassert all(value != "x" for value in strings)',
+        'assert any(value.startswith("#!") for value in _strings(Path("scripts/check_paths.py")))',
+    ],
+)
+def test_flags_source_string_bag_membership(body: str) -> None:
+    diagnostics = check(
+        "import ast\ndef _strings(path):\n"
+        "    return frozenset(node.value for node in ast.walk(ast.parse(path.read_text())) if isinstance(node, ast.Constant) and isinstance(node.value, str))\n"
+        f"def test_paths():\n{textwrap.indent(body, '    ')}\n"
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ402"
+    assert diagnostics[0].severity is Severity.WARNING
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        'used = {node.attr for node in ast.walk(ast.parse(Path("reports.py").read_text())) if isinstance(node, ast.Attribute)}\nassert used <= {"upload"}\nassert "upload" in used',
+        'assert "x" in {node.value for node in ast.walk(ast.parse(render())) if isinstance(node, ast.Constant)}',
+        'assert "x" in _strings(tmp_path / "reports.py")',
+        'assert _strings(Path("scripts/check_paths.py")) == frozenset({"a"})',
+        'assert "x" in _results()',
+        'strings = _strings(Path("scripts/check_paths.py"))\nstrings = runtime_value()\nassert "x" in strings',
+        'assert "x" in _strings(Path("fixtures/reports.py"))',
+        'assert "x" in _strings(Path("golden/reports.py"))',
+        'assert "x" in _strings(Path("snapshots/reports.py"))',
+        '_strings = lambda path: {"x"}\nassert "x" in _strings(Path("reports.py"))',
+        'assert len(_strings(Path("scripts/check_paths.py")))',
+        'strings = _strings(Path("scripts/check_paths.py"))\nstrings |= {"a"}\nassert "x" in strings',
+        'strings = _strings(Path("scripts/check_paths.py"))\ndef strings():\n    return {"a"}\nassert "x" in strings',
+        'strings = _strings(Path("scripts/check_paths.py"))\nfrom runtime import strings\nassert "x" in strings',
+        'assert "x" in _literal_strings()',
+    ],
+)
+def test_allows_non_source_and_structural_bags(body: str) -> None:
+    diagnostics = check(
+        "import ast\nfrom app import handlers\n"
+        "def _strings(path):\n"
+        "    return frozenset(node.value for node in ast.walk(ast.parse(path.read_text())) if isinstance(node, ast.Constant))\n"
+        "def _results():\n"
+        "    return [node.value for node in ast.walk(ast.parse(inspect.getsource(handlers))) if isinstance(node, ast.Constant)]\n"
+        "def _literal_strings():\n"
+        '    return {node.value for node in ast.walk(ast.parse(Path("scripts/check_paths.py").read_text())) if isinstance(node, ast.Constant)}\n'
+        f"def test_paths(tmp_path):\n{textwrap.indent(body, '    ')}\n"
+    )
+    assert len(diagnostics) == 0
+
+
+@pytest.mark.parametrize(
+    ("imports", "helper", "body", "expected"),
+    [
+        (
+            "from tests.support import strings_of",
+            "",
+            'assert "iac/main.tf" in strings_of(ROOT / "scripts/check_paths.py")',
+            1,
+        ),
+        (
+            "from app import handlers",
+            "def _results():\n    return [node.value for node in ast.walk(ast.parse(inspect.getsource(handlers))) if isinstance(node, ast.Constant) and isinstance(node.value, str)]\n",
+            "assert any(wording in result for result in _results())",
+            1,
+        ),
+        (
+            "from app import handlers as chat_handlers\nimport importlib\nimport pkgutil",
+            'def _results():\n    modules = (importlib.import_module(f"{chat_handlers.__name__}.{module.name}") for module in pkgutil.iter_modules(chat_handlers.__path__))\n    return [node.value for module in modules for node in ast.walk(ast.parse(inspect.getsource(module))) if isinstance(node, ast.Constant) and isinstance(node.value, str)]\n',
+            "assert any(wording in result for result in _results())",
+            1,
+        ),
+        (
+            "from vendorlib.workflows import warm_transfer",
+            "def _library_string_literals(source):\n    return {node.value for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Constant) and isinstance(node.value, str)}\n",
+            'source = _library_string_literals(Path(inspect.getfile(warm_transfer)).read_text())\nfor needle in ("a", "b"):\n    assert any(needle in literal for literal in source)\nsource = _library_string_literals(inspect.getsource(warm_transfer))\nfor needle in ("a", "b"):\n    assert any(needle in literal for literal in source)',
+            0,
+        ),
+    ],
+)
+def test_project_source_string_bags(tmp_path: Path, imports: str, helper: str, body: str, expected: int) -> None:
+    (tmp_path / "pyproject.toml").write_text("[project]\nname = 'example'\nversion = '0.1.0'\n")
+    sources: dict[Path, str] = {}
+    for relative, source in {
+        "app/__init__.py": "from . import handlers\n",
+        "app/handlers.py": "import typing\nRESULT = 'a'\n",
+        "tests/__init__.py": "",
+        "tests/support.py": "import ast\ndef strings_of(path):\n    return frozenset(node.value for node in ast.walk(ast.parse(path.read_text())) if isinstance(node, ast.Constant) and isinstance(node.value, str))\n",
+        "tests/test_paths.py": (
+            f"import ast\nimport inspect\nfrom pathlib import Path\n{imports}\n"
+            f"ROOT = Path(__file__).parents[1]\n{helper}"
+            f"def test_paths(wording):\n{textwrap.indent(body, '    ')}\n"
+        ),
+    }.items():
+        path = tmp_path / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(source)
+        sources[path] = source
+    rule = NoRawSourceTextTestOracle()
+    rule.prepare(ProjectIndexSet.build(list(sources), sources))
+    test = tmp_path / "tests/test_paths.py"
+    diagnostics = rule.check(test, sources[test])
+    assert len(diagnostics) == expected
+    assert all(diagnostic.code == "SARJ402" for diagnostic in diagnostics)
+    assert all(diagnostic.severity is Severity.WARNING for diagnostic in diagnostics)
+
+
+@pytest.mark.parametrize("read", ["path.read_text()", "path.read_bytes().decode()", "open(path).read()"])
+def test_unittest_string_bag_membership(read: str) -> None:
+    diagnostics = check(
+        "import ast\ndef _strings(path):\n"
+        f"    return [node.value for node in ast.walk(ast.parse({read})) if isinstance(node, ast.Constant)]\n"
+        "class TestPaths(unittest.TestCase):\n"
+        "    def test_paths(self):\n"
+        '        self.assertNotIn("x", _strings(Path("scripts/check_paths.py")))\n'
+    )
+    assert len(diagnostics) == 1
+    assert diagnostics[0].code == "SARJ402"
+    assert diagnostics[0].severity is Severity.WARNING
+
+
+def test_string_bag_preserves_raw_oracle_origin() -> None:
+    diagnostics = check(
+        "import ast\n"
+        "def test_paths():\n"
+        '    source = Path("reports.py").read_text()\n'
+        "    strings = {node.value for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Constant)}\n"
+        '    assert "x" in strings\n'
+        '    assert "x" in source\n'
+        '    assert "y" in strings\n'
+    )
+    assert len(diagnostics) == 2
+    assert [diagnostic.line for diagnostic in diagnostics] == [12, 13]
+    assert all(diagnostic.code == "SARJ402" for diagnostic in diagnostics)
+    assert all(diagnostic.severity is Severity.WARNING for diagnostic in diagnostics)

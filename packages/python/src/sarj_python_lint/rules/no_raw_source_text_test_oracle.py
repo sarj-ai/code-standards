@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 from types import MappingProxyType
 from typing import TYPE_CHECKING, ClassVar, NamedTuple, final, override
@@ -12,7 +12,7 @@ from sarj_python_lint.rule_base import (
     Diagnostic,
     ExampleFile,
     ExampleOutcome,
-    Rule,
+    ProjectRule,
     RuleCategory,
     RuleDocumentation,
     RuleExample,
@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Mapping
 
     from sarj_python_lint._file_context import PythonFileContext
+    from sarj_python_lint.rules._project_index import SourceUnit
 
 
 GENERAL_SOURCE_SUFFIXES = (
@@ -55,6 +56,7 @@ IAC_JSON_SOURCE_SUFFIXES = (".tf.json", ".tftest.json")
 _EMPTY_PATH_TUPLES: Mapping[str, int] = MappingProxyType({})
 
 _REPRESENTATION_DIRS = frozenset({"fixture", "fixtures", "golden", "goldens", "snapshot", "snapshots"})
+_MAX_BAG_PROVENANCE_HOPS = 3
 _PYTEST = frozenset({"pytest"})
 _UNITTEST = frozenset({"unittest"})
 
@@ -91,6 +93,8 @@ class _TextFlow:
     sources: _SourceKinds
     api: _ApiProvenance
     byte_writes: set[tuple[str, str]]
+    bags: set[str]
+    bag_scope: _BagScope | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +105,8 @@ class _FlowState:
     raw: set[str]
     raw_origins: dict[str, set[int]]
     byte_writes: set[tuple[str, str]]
+    bags: set[str]
+    bag_origins: dict[str, set[int]]
 
 
 _TEXT_TRANSFORMS = frozenset(
@@ -134,7 +140,7 @@ _UNITTEST_ASSERTIONS = frozenset(
 
 
 @final
-class NoRawSourceTextTestOracle(Rule):
+class NoRawSourceTextTestOracle(ProjectRule):
     id = "no-raw-source-text-test-oracle"
     code = "SARJ402"
     documentation: ClassVar[RuleDocumentation | None] = RuleDocumentation(
@@ -151,7 +157,7 @@ class NoRawSourceTextTestOracle(Rule):
         limitations=(
             "A literal module-level __test__ = False disables pytest collection. Later bindings in eager module expressions or explicitly global class scopes clear that proof; class-local names, deferred bodies, and annotation-only names do not rebind it.",
             "The rule recognizes source-like suffixes, shell templates ending in .sh.tftpl, and the exact Dockerfile basename; it follows local aliases, context-managed reads, and common normalization.",
-            "Direct generator/list-comprehension reads unpacked from stable module-level path tuples are followed; mutable collections, rebinding, filtered comprehensions, and interprocedural flows remain unreported.",
+            "Direct generator/list-comprehension reads unpacked from stable module-level path tuples are followed; mutable collections, rebinding, filtered comprehensions, and other interprocedural flows remain unreported; a one-hop helper that flattens ast.walk(ast.parse(...)) string constants of a source-like project path or of first-party inspect source is followed, and third-party library source is not.",
             "Literal shebang startswith checks are representation contracts and remain unreported; other text compatibility sentinels require an exact suppression.",
             "Files produced beneath recognized temporary-directory fixtures are generated artifacts, not repository source, and remain unreported.",
             "Paths beneath fixture, golden, and snapshot directories are treated as deliberate representation contracts and remain unreported.",
@@ -237,6 +243,7 @@ class NoRawSourceTextTestOracle(Rule):
         module_tuples = module_source_path_tuples(
             tree, imports, GENERAL_SOURCE_SUFFIXES, source_basenames=GENERAL_SOURCE_BASENAMES
         )
+        string_bags = _StringBags(context)
         assertions = [
             assertion
             for function, unittest_style in top_level_test_functions(tree, imports)
@@ -248,7 +255,7 @@ class NoRawSourceTextTestOracle(Rule):
                 suppression_code=self.code,
                 suppression_lines=source_lines,
                 unittest_style=unittest_style,
-            ).analyze(function)
+            ).analyze(function, string_bags=string_bags)
         ]
         return [
             Diagnostic(
@@ -568,6 +575,9 @@ class FunctionAnalyzer(ast.NodeVisitor):
         suppression_lines: list[str] | None = None,
         unittest_style: bool = False,
     ) -> None:
+        self._bag_scope: _BagScope | None = None
+        self._bags: set[str] = set()
+        self._bag_origins: dict[str, set[int]] = {}
         self._sources = _SourceKinds(source_suffixes, source_basenames)
         self._module_path_tuples = module_path_tuples
         self._unittest_style = unittest_style
@@ -584,9 +594,13 @@ class FunctionAnalyzer(ast.NodeVisitor):
         self._reported_origins: set[int] = set()
         self._assertions: list[ast.Assert | ast.Call] = []
 
-    def analyze(self, function: ast.FunctionDef | ast.AsyncFunctionDef) -> list[ast.Assert | ast.Call]:
+    def analyze(
+        self, function: ast.FunctionDef | ast.AsyncFunctionDef, *, string_bags: _StringBags | None = None
+    ) -> list[ast.Assert | ast.Call]:
         imports = self._imports or ImportIndex.from_tree(ast.Module(body=[], type_ignores=[]))
         self._api = _ApiProvenance(imports, _function_bound_names(function))
+        if string_bags is not None:
+            self._bag_scope = _BagScope(string_bags, function, self._provenance, string_bags.unit)
         arguments = [*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs]
         self._ephemeral_paths.update(argument.arg for argument in arguments if argument.arg in _TEMP_PATH_NAMES)
         for statement in function.body:
@@ -596,8 +610,15 @@ class FunctionAnalyzer(ast.NodeVisitor):
     @override
     def generic_visit(self, node: ast.AST) -> None:
         match node:
-            case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+            case ast.FunctionDef(name=name) | ast.AsyncFunctionDef(name=name) | ast.ClassDef(name=name):
+                self._bags.discard(name)
                 return
+            case ast.Lambda():
+                return
+            case ast.Name(id=name, ctx=(ast.Store() | ast.Del())):
+                self._bags.discard(name)
+            case ast.Import() | ast.ImportFrom():
+                self._bags.difference_update(_lexical_bound_names(node))
             case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
                 self._invalidate_comprehension_writes(node)
                 return
@@ -614,7 +635,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
     def visit_Assign(self, node: ast.Assign) -> None:
         self.visit(node.value)
         for target in node.targets:
-            self._record_target(target, node.value)
+            self._record_target(target, node.value, plain=True)
 
     @override
     def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
@@ -649,7 +670,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
     @override
     def visit_Assert(self, node: ast.Assert) -> None:
         if _raw_text_oracle(node.test, self._flow) and not self._suppressed(node):
-            origins = _expression_origins(node.test, self._raw_origins, self._flow) or {node.lineno}
+            origins = self._oracle_origins(node.test, node.lineno)
             if not origins.issubset(self._reported_origins):
                 self._assertions.append(node)
                 self._reported_origins.update(origins)
@@ -666,11 +687,20 @@ class FunctionAnalyzer(ast.NodeVisitor):
                 self._flow,
             )
         ):
-            origins = _expression_origins(node, self._raw_origins, self._flow) or {node.lineno}
+            origins = self._oracle_origins(node, node.lineno)
             if not origins.issubset(self._reported_origins):
                 self._assertions.append(node)
                 self._reported_origins.update(origins)
         self.generic_visit(node)
+
+    def _oracle_origins(self, node: ast.expr, fallback: int) -> set[int]:
+        original = replace(self._flow, bags=set(), bag_scope=None)
+        if _raw_text_oracle(node, original) or (
+            self._unittest_style and isinstance(node, ast.Call) and _unittest_raw_text_oracle(node, original)
+        ):
+            return _expression_origins(node, self._raw_origins, original) or {fallback}
+        origins = _expression_origins(node, self._raw_origins | self._bag_origins, self._flow) or {fallback}
+        return {-origin for origin in origins}
 
     def _remember_byte_write(self, node: ast.Call) -> None:
         if not isinstance(node.func, ast.Attribute) or not isinstance(node.func.value, ast.Name):
@@ -778,7 +808,7 @@ class FunctionAnalyzer(ast.NodeVisitor):
             merged = _intersect_flow_states(merged, state)
         self._restore(merged)
 
-    def _record_target(self, target: ast.expr, value: ast.expr) -> None:
+    def _record_target(self, target: ast.expr, value: ast.expr, *, plain: bool = False) -> None:
         self._clear_target(target)
         if isinstance(target, ast.Tuple | ast.List):
             self._record_unpacked_read(target, value)
@@ -792,6 +822,11 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._collections.add(target.id)
         if _source_path_expression(value, self._paths, self._sources, self._provenance):
             self._paths.add(target.id)
+        if plain and _source_string_bag(value, self._flow):
+            self._bags.add(target.id)
+            self._bag_origins[target.id] = _expression_origins(
+                value, self._raw_origins | self._bag_origins, self._flow
+            ) or {value.lineno}
         if _raw_text_expression(value, self._flow):
             self._raw.add(target.id)
             self._raw_origins[target.id] = raw_origins or {value.lineno}
@@ -821,6 +856,8 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._sources,
             _ApiProvenance(self._provenance.imports, self._provenance.shadowed | {generator.target.id}),
             self._byte_writes,
+            self._bags,
+            self._bag_scope,
         )
         if not _raw_text_expression(value.elt, flow):
             return
@@ -840,6 +877,8 @@ class FunctionAnalyzer(ast.NodeVisitor):
         self._byte_writes = {write for write in self._byte_writes if name not in write}
         self._paths.discard(name)
         self._raw.discard(name)
+        self._bags.discard(name)
+        self._bag_origins.pop(name, None)
         self._raw_origins.pop(name, None)
         self._collections.discard(name)
         self._ephemeral_paths.discard(name)
@@ -852,6 +891,8 @@ class FunctionAnalyzer(ast.NodeVisitor):
             set(self._raw),
             {name: set(origins) for name, origins in self._raw_origins.items()},
             set(self._byte_writes),
+            set(self._bags),
+            {name: set(origins) for name, origins in self._bag_origins.items()},
         )
 
     def _restore(self, state: _FlowState) -> None:
@@ -859,6 +900,8 @@ class FunctionAnalyzer(ast.NodeVisitor):
         self._ephemeral_paths = set(state.ephemeral_paths)
         self._paths = set(state.paths)
         self._raw = set(state.raw)
+        self._bags = set(state.bags)
+        self._bag_origins = {name: set(origins) for name, origins in state.bag_origins.items()}
         self._raw_origins = {name: set(origins) for name, origins in state.raw_origins.items()}
         self._byte_writes = set(state.byte_writes)
 
@@ -885,11 +928,14 @@ class FunctionAnalyzer(ast.NodeVisitor):
             self._sources,
             self._provenance,
             self._byte_writes,
+            self._bags,
+            self._bag_scope,
         )
 
 
 def _intersect_flow_states(left: _FlowState, right: _FlowState) -> _FlowState:
     raw = left.raw & right.raw
+    bags = left.bags & right.bags
     return _FlowState(
         left.collections & right.collections,
         left.ephemeral_paths & right.ephemeral_paths,
@@ -897,6 +943,8 @@ def _intersect_flow_states(left: _FlowState, right: _FlowState) -> _FlowState:
         raw,
         {name: left.raw_origins.get(name, set()) | right.raw_origins.get(name, set()) for name in raw},
         left.byte_writes & right.byte_writes,
+        bags,
+        {name: left.bag_origins[name] | right.bag_origins[name] for name in bags},
     )
 
 
@@ -1136,6 +1184,365 @@ def _raw_text_expression(
     return False
 
 
+@dataclass(frozen=True, slots=True)
+class _StringBag:
+    text: ast.expr
+    comprehension: ast.SetComp | ast.ListComp | ast.GeneratorExp
+
+
+def _expression_names(node: ast.AST) -> set[str]:
+    return {child.id for child in walk_ast(node) if isinstance(child, ast.Name)}
+
+
+def _string_bag_text(node: ast.expr, api: _ApiProvenance) -> _StringBag | None:
+    match node:
+        case ast.Call(func=ast.Name(id=name), args=[argument], keywords=[]) if (
+            name in {"frozenset", "set", "list", "tuple", "sorted"}
+            and name not in api.shadowed
+            and api.imports.builtin_is_unshadowed(name)
+        ):
+            node = argument
+        case ast.Call():
+            return None
+        case _:
+            pass
+    match node:
+        case (
+            ast.SetComp(elt=ast.Attribute(value=ast.Name(id=name), attr="value"))
+            | ast.ListComp(elt=ast.Attribute(value=ast.Name(id=name), attr="value"))
+            | ast.GeneratorExp(elt=ast.Attribute(value=ast.Name(id=name), attr="value"))
+        ):
+            pass
+        case _:
+            return None
+    api = _ApiProvenance(
+        api.imports, api.shadowed | set[str]().union(*(_expression_names(g.target) for g in node.generators))
+    )
+    for generator in node.generators:
+        if generator.is_async or not isinstance(generator.target, ast.Name) or generator.target.id != name:
+            continue
+        text = _parsed_walk_text(generator.iter, api)
+        if text is not None and _filters_constant(generator.ifs, name, api):
+            return _StringBag(text, node)
+    return None
+
+
+def _parsed_walk_text(node: ast.expr, api: _ApiProvenance) -> ast.expr | None:
+    match node:
+        case ast.Call(func=walk, args=[ast.Call(func=parse, args=[text, *_])]) if (
+            _api_resolves(walk, api, sources=frozenset({"ast"}), symbol="walk")
+            and _api_resolves(parse, api, sources=frozenset({"ast"}), symbol="parse")
+            and not _expression_names(text) & api.shadowed & api.imports.bindings.keys()
+        ):
+            return text
+        case _:
+            return None
+
+
+def _filters_constant(conditions: list[ast.expr], name: str, api: _ApiProvenance) -> bool:
+    if "isinstance" in api.shadowed or not api.imports.builtin_is_unshadowed("isinstance"):
+        return False
+    pending = list(conditions)
+    while pending:
+        match pending.pop():
+            case ast.BoolOp(op=ast.And(), values=values):
+                pending.extend(values)
+            case ast.Call(func=ast.Name(id="isinstance"), args=[ast.Name(id=subject), kind], keywords=[]) if (
+                subject == name and _api_resolves(kind, api, sources=frozenset({"ast"}), symbol="Constant")
+            ):
+                return True
+            case _:
+                pass
+    return False
+
+
+class _StringBags:
+    def __init__(self, context: PythonFileContext) -> None:
+        self.project = context.session.project
+        self.unit = self.project.unit(context.path) if self.project is not None else None
+        self.tree = context.tree
+        self.helpers: dict[str, _BagScope | None] = {}
+
+    def helper(self, expression: ast.expr) -> _BagScope | None:
+        key = ast.unparse(expression)
+        if key in self.helpers:
+            return self.helpers[key]
+        unit = self.unit
+        tree = self.tree
+        match expression:
+            case ast.Name(id=name):
+                pass
+            case _:
+                name = None
+        if (
+            self.project is not None
+            and self.unit is not None
+            and (symbol := self.project.resolve(self.unit, expression)) is not None
+        ):
+            unit = self.project.source_unit(symbol.module)
+            tree = unit.tree if unit is not None else None
+            name = symbol.name
+        self.helpers[key] = None
+        if tree is None or name is None or Counter(_enclosing_scope_bindings(tree.body))[name] != 1:
+            return None
+        for function in tree.body:
+            match function:
+                case ast.FunctionDef(name=found, decorator_list=[]) if found == name:
+                    api = _ApiProvenance(
+                        ImportIndex.from_tree(tree, module_scope_only=True), _function_bound_names(function)
+                    )
+                    candidate = _BagScope(self, function, api, unit)
+                    if candidate.returned_bag() is not None:
+                        self.helpers[key] = candidate
+                case _:
+                    pass
+        return self.helpers[key]
+
+
+class _BagScope:
+    def __init__(
+        self,
+        resolver: _StringBags,
+        function: ast.FunctionDef | ast.AsyncFunctionDef,
+        api: _ApiProvenance,
+        unit: SourceUnit | None,
+    ) -> None:
+        self.resolver = resolver
+        self.function = function
+        self.api = api
+        self.unit = unit
+        self.values: dict[str, list[ast.expr]] = {}
+        plain: dict[str, ast.expr] = {}
+        pending: list[ast.AST] = list(function.body)
+        while pending:
+            current = pending.pop()
+            match current:
+                case ast.FunctionDef() | ast.AsyncFunctionDef() | ast.ClassDef() | ast.Lambda():
+                    continue
+                case ast.Assign(targets=[ast.Name(id=name)], value=value):
+                    plain[name] = value
+                    self.values.setdefault(name, []).append(value)
+                case ast.Assign(targets=targets, value=value):
+                    for target in targets:
+                        match target:
+                            case ast.Name(id=name):
+                                self.values.setdefault(name, []).append(value)
+                            case _:
+                                pass
+                case (
+                    ast.AnnAssign(target=ast.Name(id=name), value=ast.expr() as value)
+                    | ast.NamedExpr(target=ast.Name(id=name), value=value)
+                    | ast.withitem(context_expr=value, optional_vars=ast.Name(id=name))
+                ):
+                    self.values.setdefault(name, []).append(value)
+                case _:
+                    pass
+            pending.extend(ast.iter_child_nodes(current))
+        counts = Counter(_enclosing_scope_bindings(function.body))
+        parameters = {
+            argument.arg for argument in (*function.args.posonlyargs, *function.args.args, *function.args.kwonlyargs)
+        }
+        self.bindings = {name: value for name, value in plain.items() if counts[name] == 1 and name not in parameters}
+
+    def expand(self, node: ast.expr) -> ast.expr:
+        seen: set[str] = set()
+        while isinstance(node, ast.Name) and node.id in self.bindings and node.id not in seen:
+            seen.add(node.id)
+            node = self.bindings[node.id]
+        return node
+
+    def returned_bag(self) -> _StringBag | None:
+        args = self.function.args
+        if args.vararg or args.kwarg or args.kwonlyargs or len([*args.posonlyargs, *args.args]) > 1:
+            return None
+        body = self.function.body
+        if ast.get_docstring(self.function, clean=False) is not None:
+            body = body[1:]
+        match body:
+            case [*assignments, ast.Return(value=ast.expr() as returned)]:
+                pass
+            case _:
+                return None
+        used = _expression_names(returned)
+        for statement in reversed(assignments):
+            match statement:
+                case ast.Assign(targets=[ast.Name(id=name)], value=value) if name in self.bindings and name in used:
+                    used.update(_expression_names(value))
+                case _:
+                    return None
+        return _string_bag_text(self.expand(returned), self.api)
+
+    def inspect_roots(self, node: ast.expr, seen: frozenset[str] = frozenset()) -> list[ast.expr]:
+        roots: list[ast.expr] = []
+        for child in walk_ast(node):
+            match child:
+                case ast.Name(id=name) if name not in seen:
+                    for value in self.values.get(name, ()):
+                        roots.extend(self.inspect_roots(value, seen | {name}))
+                case ast.Attribute(value=value, attr="__file__"):
+                    roots.append(value)
+                case ast.Call(func=func, args=[root, *_]) if _api_resolves(
+                    func, self.api, sources=frozenset({"inspect"}), symbol="getfile"
+                ):
+                    roots.append(root)
+                case _:
+                    pass
+        return roots
+
+    def rooted(self, node: ast.expr, bindings: dict[str, ast.expr], hops: int = 0) -> set[bool]:
+        match node:
+            case ast.Name(id=name) if name in bindings:
+                if hops >= _MAX_BAG_PROVENANCE_HOPS:
+                    return {False}
+                return self.rooted(bindings[name], self.bindings, hops + 1)
+            case ast.Name():
+                return {self.import_rooted(node)}
+            case ast.Attribute(value=value):
+                return self.rooted(value, bindings, hops)
+            case ast.GeneratorExp() | ast.ListComp() | ast.SetComp():
+                local = dict(bindings)
+                for generator in node.generators:
+                    match generator.target:
+                        case ast.Name(id=name):
+                            local[name] = generator.iter
+                        case _:
+                            return {False}
+                return self.rooted(node.elt, local, hops)
+            case ast.Call(func=func, args=args):
+                if not (
+                    _api_resolves(func, self.api, sources=frozenset({"importlib"}), symbol="import_module")
+                    or _api_resolves(func, self.api, sources=frozenset({"pkgutil"}), symbol="iter_modules")
+                ):
+                    return {False}
+                return set[bool]().union(*(self.rooted(argument, bindings, hops) for argument in args))
+            case ast.JoinedStr(values=values):
+                return set[bool]().union(
+                    *(
+                        self.rooted(value.value, bindings, hops)
+                        for value in values
+                        if isinstance(value, ast.FormattedValue)
+                    )
+                )
+            case ast.Constant():
+                return set()
+            case _:
+                return {False}
+
+    def import_rooted(self, node: ast.Name) -> bool:
+        project = self.resolver.project
+        if (
+            project is None
+            or self.unit is None
+            or node.id in self.api.shadowed
+            or node.id not in self.unit.imports
+            or node.id not in self.api.imports.bindings
+        ):
+            return False
+        symbol = project.resolve(self.unit, node)
+        if symbol is None:
+            return False
+        modules: set[str] = set()
+        for statement in self.unit.tree.body if self.unit.tree is not None else ():
+            match statement:
+                case ast.Import(names=aliases):
+                    modules.update(
+                        alias.name for alias in aliases if (alias.asname or alias.name.partition(".")[0]) == node.id
+                    )
+                case _:
+                    pass
+        return all(project.source_unit(module) is not None for module in modules or {symbol.module})
+
+    def source(
+        self, node: ast.expr, flow: _TextFlow, bag: ast.expr, *, path: bool = False, inspect_only: bool = False
+    ) -> bool:
+        roots = self.inspect_roots(node)
+        if path:
+            raw = _source_path_expression(
+                node, flow.path_names, flow.sources, flow.api
+            ) and not _ephemeral_path_expression(node, flow.ephemeral_path_names)
+        else:
+            raw = _raw_text_expression(node, flow)
+        match self.expand(node):
+            case ast.Call(func=func, args=[root, *_]) if not path and _api_resolves(
+                func, self.api, sources=frozenset({"inspect"}), symbol="getsource"
+            ):
+                roots.append(root)
+            case _ if not raw:
+                return False
+            case _:
+                pass
+        if not roots:
+            return raw and not inspect_only
+        bindings = dict(self.bindings)
+        match bag:
+            case ast.SetComp() | ast.ListComp() | ast.GeneratorExp():
+                bindings.update(
+                    (generator.target.id, generator.iter)
+                    for generator in bag.generators
+                    if isinstance(generator.target, ast.Name)
+                )
+            case _:
+                pass
+        return all(self.rooted(root, bindings) == {True} for root in roots)
+
+    def matches(self, node: ast.expr, flow: _TextFlow) -> bool:
+        if (bag := _string_bag_text(node, flow.api)) is not None:
+            return self.source(bag.text, flow, bag.comprehension)
+        if not isinstance(node, ast.Call) or node.keywords or _root_name(node.func) in flow.api.shadowed:
+            return False
+        helper = self.resolver.helper(node.func)
+        if helper is None or (bag := helper.returned_bag()) is None:
+            return False
+        parameters = [*helper.function.args.posonlyargs, *helper.function.args.args]
+        if len(node.args) != len(parameters):
+            return False
+        if not parameters:
+            return helper.source(bag.text, helper.text_flow(flow.sources), bag.comprehension, inspect_only=True)
+        parameter = parameters[0].arg
+        match helper.expand(bag.text):
+            case ast.Name(id=name) if name == parameter:
+                return self.source(node.args[0], flow, node.args[0])
+            case ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr="read_text")):
+                pass
+            case ast.Call(
+                func=ast.Attribute(
+                    value=ast.Call(func=ast.Attribute(value=ast.Name(id=receiver), attr="read_bytes")), attr="decode"
+                )
+            ):
+                pass
+            case ast.Call(
+                func=ast.Attribute(
+                    value=ast.Call(func=ast.Name(id="open"), args=[ast.Name(id=receiver), *_]), attr="read"
+                )
+            ):
+                if "open" in helper.api.shadowed or not helper.api.imports.builtin_is_unshadowed("open"):
+                    return False
+            case _:
+                return False
+        return receiver == parameter and self.source(node.args[0], flow, node.args[0], path=True)
+
+    def text_flow(self, sources: _SourceKinds) -> _TextFlow:
+        flow = _TextFlow(set(), set(), set(), sources, self.api, set(), set(), self)
+        for statement in self.function.body:
+            match statement:
+                case ast.Assign(targets=[ast.Name(id=name), *_], value=value):
+                    if _source_path_expression(value, flow.path_names, sources, self.api):
+                        flow.path_names.add(name)
+                    if _raw_text_expression(value, flow):
+                        flow.raw_names.add(name)
+                case _:
+                    pass
+        return flow
+
+
+def _source_string_bag(node: ast.expr, flow: _TextFlow) -> bool:
+    match node:
+        case ast.Name(id=name) if name in flow.bags:
+            return True
+        case _:
+            return flow.bag_scope is not None and flow.bag_scope.matches(node, flow)
+
+
 def _raw_text_oracle(
     node: ast.expr,
     flow: _TextFlow,
@@ -1190,18 +1597,39 @@ def _raw_text_measurement(
 
 
 def _consumed_generator_oracle(node: ast.expr, flow: _TextFlow) -> bool:
-    if not isinstance(node, ast.Call) or node.keywords or len(node.args) != 1:
+    match node:
+        case ast.Call(func=ast.Name(id=name), args=[ast.GeneratorExp() as argument], keywords=[]) if (
+            name in {"all", "any"} and name not in flow.api.shadowed and flow.api.imports.builtin_is_unshadowed(name)
+        ):
+            pass
+        case _:
+            return False
+    if _comprehension_is_statically_empty(argument.generators):
         return False
-    function = node.func
-    if (
-        not isinstance(function, ast.Name)
-        or function.id not in {"all", "any"}
-        or function.id in flow.api.shadowed
-        or not flow.api.imports.builtin_is_unshadowed(function.id)
-    ):
-        return False
-    argument = node.args[0]
-    return isinstance(argument, ast.GeneratorExp) and _comprehension_oracle(argument, flow, consumes_values=True)
+    match argument.generators:
+        case [ast.comprehension(target=ast.Name(id=target), iter=iterable)] if _source_string_bag(iterable, flow):
+            if _string_bag_predicate(argument.elt, target):
+                return True
+        case _:
+            pass
+    return _comprehension_oracle(argument, flow, consumes_values=True)
+
+
+def _string_bag_predicate(node: ast.expr, target: str) -> bool:
+    match node:
+        case ast.Compare(left=left, comparators=comparators, ops=ops):
+            operands = [left, *comparators]
+            return any(
+                isinstance(operator, ast.In | ast.NotIn | ast.Eq | ast.NotEq)
+                and any(
+                    isinstance(operand, ast.Name) and operand.id == target for operand in operands[index : index + 2]
+                )
+                for index, operator in enumerate(ops)
+            )
+        case ast.Call(func=ast.Attribute(value=ast.Name(id=name), attr=method)):
+            return name == target and method in {"startswith", "endswith"}
+        case _:
+            return False
 
 
 def _comprehension_oracle(
@@ -1243,6 +1671,8 @@ def _bind_comprehension_target(generator: ast.comprehension, flow: _TextFlow) ->
         flow.sources,
         _ApiProvenance(flow.api.imports, flow.api.shadowed | names),
         {write for write in flow.byte_writes if names.isdisjoint(write)},
+        flow.bags - names,
+        flow.bag_scope,
     )
     if raw_lines and isinstance(generator.target, ast.Name):
         scoped.raw_names.add(generator.target.id)
@@ -1287,11 +1717,18 @@ def _unittest_raw_text_oracle(
         and isinstance(node.func.value, ast.Name)
         and node.func.value.id in {"self", "cls"}
         and node.func.attr in _UNITTEST_ASSERTIONS
-        and any(
-            _raw_text_expression(argument, flow)
-            or _raw_text_measurement(argument, flow)
-            or _raw_text_oracle(argument, flow)
-            for argument in node.args
+        and (
+            (
+                node.func.attr in {"assertIn", "assertNotIn"}
+                and len(node.args) > 1
+                and _source_string_bag(node.args[1], flow)
+            )
+            or any(
+                _raw_text_expression(argument, flow)
+                or _raw_text_measurement(argument, flow)
+                or _raw_text_oracle(argument, flow)
+                for argument in node.args
+            )
         )
     )
 
@@ -1325,6 +1762,11 @@ def _raw_text_comparison(node: ast.Compare, flow: _TextFlow) -> bool:
         return False
     if any(_raw_text_measurement(operand, flow) for operand in operands) and any(
         isinstance(operator, (ast.Eq, ast.NotEq, ast.Lt, ast.LtE, ast.Gt, ast.GtE)) for operator in node.ops
+    ):
+        return True
+    if any(
+        isinstance(operator, ast.In | ast.NotIn) and _source_string_bag(right, flow)
+        for operator, right in zip(node.ops, node.comparators, strict=True)
     ):
         return True
     return bool(
