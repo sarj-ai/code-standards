@@ -11,7 +11,7 @@
 import { readFile, readdir, writeFile, mkdir, copyFile } from "node:fs/promises";
 import { hash } from "node:crypto";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { parseArgs } from "node:util";
 
 import { build, type Plugin } from "esbuild";
@@ -178,6 +178,8 @@ export * as ESLintUtils from ${JSON.stringify(join(dirname(path), "eslint-utils/
   },
 };
 
+// The authored plugin bundles jsonc-parser; its other dependencies stay external.
+const bundledPackages = new Set<string>([join(PACKAGE_DIR, "node_modules/jsonc-parser")]);
 for (const [alias, name, subpath] of PLUGINS) {
   // Refresh inputs are direct dependencies in the locked npm source fixture.
   const packageRoot = join(sourceRoot, "node_modules", name);
@@ -238,21 +240,69 @@ for (const [alias, name, subpath] of PLUGINS) {
     // parser as a normal dependency so its data resolves after installation.
     external: ["@eslint/css-tree", "change-case", "typescript"],
     banner: {
-      js: 'import {createRequire as sarjCreateRequire} from "node:module";const require=sarjCreateRequire(import.meta.url);',
+      js: '/*! Generated for Oxlint by Sarj. Modified: rule selection, compatibility adapters, bundling and minification. Licenses and attribution: THIRD_PARTY_NOTICES.txt. */\nimport {createRequire as sarjCreateRequire} from "node:module";const require=sarjCreateRequire(import.meta.url);',
     },
     plugins: [SELECTED_UNICORN_UTILITIES, PURE_HELPERS],
   });
   const inputs = Object.keys(result.metafile.inputs);
+  for (const input of inputs) {
+    const absolute = resolve(PACKAGE_DIR, input);
+    const marker = `${sep}node_modules${sep}`;
+    const index = absolute.lastIndexOf(marker);
+    if (index < 0) continue;
+    const prefix = absolute.slice(0, index + marker.length);
+    const parts = absolute.slice(index + marker.length).split(sep);
+    const count = parts[0]!.startsWith("@") ? 2 : 1;
+    bundledPackages.add(join(prefix, ...parts.slice(0, count)));
+  }
   if (inputs.some((input) => ENGINE.test(input)))
     throw new Error(`${alias} bundles the ESLint engine`);
   for (const output of result.outputFiles) await writeFile(output.path, output.contents);
   console.log(`${alias}: ${String(rules.length)} upstream rules, no ESLint engine`);
 }
 
+const notices: string[] = [
+  "Bundled upstream components",
+  "Generated from the exact build inputs and pinned npm lockfiles.",
+  "These notices apply to the respective upstream components; Sarj-authored code retains its own license.",
+];
+for (const packageRoot of [...bundledPackages].sort()) {
+  const metadata = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as {
+    name: string;
+    version: string;
+    license: string;
+  };
+  const licenseFiles = (await readdir(packageRoot, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && /^(?:licen[sc]e|copying|notice)(?:[._-].*)?$/iu.test(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  let texts = await Promise.all(
+    licenseFiles.map(async (file) => `${file}\n${await readFile(join(packageRoot, file), "utf8")}`),
+  );
+  if (texts.length === 0) {
+    // https://github.com/vercel/next.js/blob/54b876b6b161b0ecda19562eb264bec637e60d6d/license.md
+    // This npm release omits its license. Preserve the matching upstream tag's
+    // license locally and fail closed for any future version without notices.
+    if (metadata.name !== "@next/eslint-plugin-next" || metadata.version !== "16.4.6")
+      throw new Error(`Missing upstream license text: ${metadata.name}@${metadata.version}`);
+    texts = [await readFile(join(SNAPSHOTS, "next-LICENSE.txt"), "utf8")];
+  }
+  notices.push(
+    `\n=== ${metadata.name}@${metadata.version} (${metadata.license}) ===\n`,
+    `Source package: https://www.npmjs.com/package/${metadata.name}/v/${metadata.version}\n`,
+    ...texts,
+  );
+}
+await writeFile(join(SNAPSHOTS, "THIRD_PARTY_NOTICES.txt"), `${notices.join("\n")}\n`);
+
 await copyFile(join(sourceRoot, "package-lock.json"), join(SNAPSHOTS, "sources.lock.json"));
 const files: Record<string, string> = {};
 for (const file of (await readdir(SNAPSHOTS)).filter((file) => /\.js$/u.test(file)).sort())
   files[file] = hash("sha256", await readFile(join(SNAPSHOTS, file)));
+files["THIRD_PARTY_NOTICES.txt"] = hash(
+  "sha256",
+  await readFile(join(SNAPSHOTS, "THIRD_PARTY_NOTICES.txt")),
+);
 await writeFile(
   join(SNAPSHOTS, "manifest.json"),
   `${JSON.stringify(
