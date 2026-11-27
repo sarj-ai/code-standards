@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_immutable_module_constant import PreferImmutableModuleConstant
 from sarj_python_lint.rules.prefer_module_level_constant import PreferModuleLevelConstant
 
@@ -87,6 +88,49 @@ def test_flags_constant_regex(value: str):
     diags = _check("import re\n\n" + _fn(f"pattern = {value}\nreturn pattern.match(payload) is not None"))
     assert len(diags) == 1
     assert "regex-cache lookup on every call" in diags[0].message
+
+
+@pytest.mark.parametrize("method", ["fullmatch", "match", "search", "sub"])
+def test_flags_bound_regex_matcher(method: str) -> None:
+    source = "import re\n\n" + _fn(
+        f'matches = re.compile(r"[a-z]+$").{method}\n'
+        "for item in payload:\n    if matches(item):\n        return True\nreturn False"
+    )
+    findings = _check(source)
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert "regex-cache lookup on every call" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nreturn matches'),
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nreturn consume(matches)'),
+        "import re\n\n" + _fn('matches = re.compile(payload).fullmatch\nreturn matches("x")'),
+        "import re\n\n" + _fn('matches = re.compile("x", re.DEBUG).search\nreturn matches(payload)'),
+        "import re\n\n" + _fn('matches = re.compile("x").pattern\nreturn matches'),
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nreturn None'),
+        _fn('matches = re.compile("x").fullmatch\nreturn matches(payload)'),
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nreturn matches.__name__'),
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nfor item in matches:\n    emit(item)'),
+        "import re\n\n" + _fn('matches = re.compile("x").fullmatch\nreturn payload in matches'),
+    ],
+    ids=(
+        "returned",
+        "passed",
+        "dynamic-pattern",
+        "debug",
+        "non-method",
+        "unused",
+        "unimported",
+        "introspection",
+        "iterated",
+        "membership",
+    ),
+)
+def test_ignores_unsafe_bound_regex_matcher(source: str) -> None:
+    assert _check(source) == []
 
 
 @pytest.mark.parametrize(
