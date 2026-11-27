@@ -989,6 +989,7 @@ const RULES = {
   "@sarj/prefer-native-random-uuid": "error",
   "@sarj/prefer-node-crypto-hash": "error",
   "@sarj/prefer-node-fs-promises": "error",
+  "@sarj/prefer-nominal-id-members": "warn",
   "@sarj/prefer-nominal-id-types": "error",
   "@sarj/prefer-non-nullable-collection": "error",
   "@sarj/prefer-nullish-filter-predicate": "error",
