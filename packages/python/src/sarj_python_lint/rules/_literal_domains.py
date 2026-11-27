@@ -1,0 +1,145 @@
+from __future__ import annotations
+
+import ast
+from collections import defaultdict
+from collections.abc import Mapping
+from dataclasses import dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING, NamedTuple, Self
+
+from sarj_python_lint.rules._annotation_semantics import module_rebindings
+from sarj_python_lint.rules._imports import TYPING_SOURCES, ImportIndex
+
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sarj_python_lint.rules._nominal_project import NominalSource
+
+
+_ENUM_SOURCES = frozenset({"enum"})
+
+
+class LiteralAlias(NamedTuple):
+    name: str
+    node: ast.Subscript
+    members: frozenset[str]
+
+
+class _AliasValue(NamedTuple):
+    name: str
+    value: ast.expr
+
+
+class DomainDeclaration(NamedTuple):
+    module: str
+    path: Path
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class LiteralDomainIndex:
+    aliases: Mapping[frozenset[str], list[DomainDeclaration]]
+    enums: Mapping[frozenset[str], list[DomainDeclaration]]
+
+    @classmethod
+    def build(cls, sources: Mapping[str, NominalSource]) -> Self:
+        aliases: defaultdict[frozenset[str], list[DomainDeclaration]] = defaultdict(list)
+        enums: defaultdict[frozenset[str], list[DomainDeclaration]] = defaultdict(list)
+        for module, source in sources.items():
+            has_literal = "Literal" in source.text
+            has_enum = "Enum" in source.text and "enum" in source.text
+            if not (has_literal or has_enum) or (tree := source.tree) is None:
+                continue
+            imports = ImportIndex.from_tree(tree, module_scope_only=True)
+            if has_literal:
+                for alias in literal_aliases(tree, imports):
+                    aliases[alias.members].append(DomainDeclaration(module, source.path, alias.name))
+            if has_enum:
+                for name, members in _string_enums(tree, imports).items():
+                    enums[members].append(DomainDeclaration(module, source.path, name))
+        return cls(aliases, enums)
+
+
+def string_literal_members(node: ast.Subscript) -> frozenset[str] | None:
+    if not isinstance(node.slice, ast.Tuple):
+        return None
+    members: set[str] = set()
+    for member in node.slice.elts:
+        if not isinstance(member, ast.Constant) or not isinstance(member.value, str):
+            return None
+        members.add(member.value)
+    return frozenset(members) if len(members) > 1 else None
+
+
+def literal_aliases(tree: ast.Module, imports: ImportIndex) -> list[LiteralAlias]:
+    candidates = [
+        LiteralAlias(name, value, members)
+        for name, value in _alias_values(tree, imports)
+        if isinstance(value, ast.Subscript)
+        and imports.resolves(value.value, sources=TYPING_SOURCES, symbol="Literal")
+        and (members := string_literal_members(value)) is not None
+    ]
+    if not candidates:
+        return []
+    rebound = module_rebindings(tree)
+    return [candidate for candidate in candidates if candidate.name not in rebound]
+
+
+def _alias_values(tree: ast.Module, imports: ImportIndex) -> Iterator[_AliasValue]:
+    for statement in tree.body:
+        match statement:
+            case ast.TypeAlias(name=ast.Name(id=name), value=value, type_params=[]):
+                yield _AliasValue(name, value)
+            case ast.Assign(targets=[ast.Name(id=name)], value=value):
+                yield _AliasValue(name, value)
+            case ast.AnnAssign(target=ast.Name(id=name), annotation=annotation, value=ast.expr() as value) if (
+                imports.resolves(annotation, sources=TYPING_SOURCES, symbol="TypeAlias")
+            ):
+                yield _AliasValue(name, value)
+            case _:
+                pass
+
+
+def _string_enums(tree: ast.Module, imports: ImportIndex) -> dict[str, frozenset[str]]:
+    candidates = [node for node in tree.body if isinstance(node, ast.ClassDef) and _has_string_enum_base(node, imports)]
+    if not candidates:
+        return {}
+    rebound = module_rebindings(tree)
+    return {
+        node.name: members
+        for node in candidates
+        if node.name not in rebound and (members := _enum_members(node)) is not None
+    }
+
+
+def _has_string_enum_base(node: ast.ClassDef, imports: ImportIndex) -> bool:
+    if node.decorator_list or node.keywords:
+        return False
+    match node.bases:
+        case [base]:
+            return imports.resolved_symbol(base, sources=_ENUM_SOURCES) in {"Enum", "StrEnum"}
+        case [ast.Name(id="str"), base]:
+            return imports.builtin_is_unshadowed("str") and imports.resolves(base, sources=_ENUM_SOURCES, symbol="Enum")
+        case _:
+            return False
+
+
+def _enum_members(node: ast.ClassDef) -> frozenset[str] | None:
+    members: set[str] = set()
+    for statement in node.body:
+        match statement:
+            case (
+                ast.Assign(targets=[ast.Name(id=name)], value=ast.Constant(value=str() as value))
+                | ast.AnnAssign(target=ast.Name(id=name), value=ast.Constant(value=str() as value))
+            ) if not name.startswith("_"):
+                members.add(value)
+            case ast.Expr(value=ast.Constant(value=str())) | ast.Pass():
+                continue
+            case ast.FunctionDef(name=name, decorator_list=[]) | ast.AsyncFunctionDef(name=name, decorator_list=[]) if (
+                name not in {"__init__", "__new__"}
+            ):
+                continue
+            case _:
+                return None
+    return frozenset(members) if len(members) > 1 else None

@@ -14,8 +14,9 @@ from packaging.utils import canonicalize_name
 
 from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rules._ast_index import NodeIndex, import_statements
-from sarj_python_lint.rules._first_party import distribution_root
+from sarj_python_lint.rules._first_party import distribution_root, has_distribution_marker
 from sarj_python_lint.rules._imports import ImportIndex
+from sarj_python_lint.rules._literal_domains import LiteralDomainIndex
 from sarj_python_lint.rules._paths import GeneratedPathFacts
 from sarj_python_lint.rules._project_index import ProjectIndexSet, parsed_tree
 
@@ -155,6 +156,10 @@ class _DistributionSources:
     def sources(self) -> dict[str, NominalSource]:
         return {module: source for module, source in self._entries if self.get(module) is source}
 
+    @cached_property
+    def literal_domains(self) -> LiteralDomainIndex:
+        return LiteralDomainIndex.build(self.sources)
+
 
 @final
 class NominalScope:
@@ -227,6 +232,9 @@ class NominalProjectFacts:
         self._sources: dict[tuple[Path, bool], _DistributionSources] = {}
         self._scopes: dict[tuple[Path, bool], NominalScope] = {}
         self._directory_scopes: dict[tuple[Path, bool], NominalScope] = {}
+
+    def literal_domains(self, owner: Path, *, project: ProjectIndexSet | None = None) -> LiteralDomainIndex:
+        return self._distribution_sources(owner, project, include_generated=False).literal_domains
 
     def sources(
         self,
@@ -397,13 +405,19 @@ def _raise_walk_error(error: OSError) -> Never:
     raise error
 
 
-def _files(root: Path, pattern: str) -> list[Path]:
+def _files(root: Path, pattern: str, *, distribution_only: bool = False) -> list[Path]:
     found: list[Path] = []
     try:
         for count, (directory, directories, filenames) in enumerate(root.walk(on_error=_raise_walk_error)):
             if count >= _MAX_DIRECTORIES or len(found) >= _MAX_FILES:
                 return []
-            directories[:] = sorted(name for name in directories if not name.startswith(".") and name not in _SKIP)
+            directories[:] = sorted(
+                name
+                for name in directories
+                if not name.startswith(".")
+                and name not in _SKIP
+                and (not distribution_only or not has_distribution_marker(directory / name))
+            )
             found.extend(directory / name for name in sorted(filenames) if Path(name).match(pattern))
             if len(found) > _MAX_FILES:
                 return []
@@ -414,9 +428,8 @@ def _files(root: Path, pattern: str) -> list[Path]:
 
 def _source_entries(root: Path, project: ProjectIndexSet | None) -> list[tuple[str, NominalSource]]:
     sources: list[tuple[str, NominalSource]] = []
-    owned_directories: dict[Path, bool] = {}
     total_bytes = 0
-    for path in _files(root, "*.py"):
+    for path in _files(root, "*.py", distribution_only=True):
         try:
             size = path.stat().st_size
         except OSError:
@@ -426,7 +439,7 @@ def _source_entries(root: Path, project: ProjectIndexSet | None) -> list[tuple[s
             return []
         if size > _MAX_BYTES:
             continue
-        module = _module_name(root, path, owned_directories)
+        module = _module_name(root, path)
         if not module:
             continue
         source = _source(path, project)
@@ -436,24 +449,10 @@ def _source_entries(root: Path, project: ProjectIndexSet | None) -> list[tuple[s
     return sources
 
 
-def _module_name(root: Path, path: Path, owned_directories: dict[Path, bool]) -> str | None:
-    directory = path.parent
-    if directory not in owned_directories:
-        owned_directories[directory] = _owns_directory(root, directory)
-    if not owned_directories[directory]:
-        return None
+def _module_name(root: Path, path: Path) -> str | None:
     relative = path.relative_to(root)
     parts = relative.parts[1:] if relative.parts[0] == "src" else relative.parts
     return ".".join(parts[:-1] if parts[-1] == "__init__.py" else (*parts[:-1], path.stem)) or None
-
-
-def _owns_directory(root: Path, directory: Path) -> bool:
-    for ancestor in (directory, *directory.parents):
-        if ancestor == root:
-            return True
-        if (ancestor / "pyproject.toml").is_file():
-            return False
-    return False
 
 
 def _source(path: Path, project: ProjectIndexSet | None) -> NominalSource | None:

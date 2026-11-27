@@ -70,16 +70,14 @@ class FirstPartyFacts:
         return outermost
 
     def first_party_roots(self, root: Path) -> frozenset[str]:
-        cached = self._roots.get(root)
-        if cached is not None:
+        if (cached := self._roots.get(root)) is not None:
             return cached
         roots = frozenset(name for name, _ in self.first_party_packages(root))
         self._roots[root] = roots
         return roots
 
     def first_party_packages(self, root: Path) -> tuple[tuple[str, Path], ...]:
-        cached = self._packages.get(root)
-        if cached is not None:
+        if (cached := self._packages.get(root)) is not None:
             return cached
         packages = _scan_first_party_packages(root)
         self._packages[root] = packages
@@ -142,11 +140,15 @@ def distribution_root(path: Path, *, facts: FirstPartyFacts | None = None) -> Pa
         return None
     root = facts.project_root(resolved)
     for ancestor in list(resolved.parents)[:_MAX_ANCESTORS]:
-        if any((ancestor / marker).exists() for marker in _DISTRIBUTION_MARKERS):
+        if has_distribution_marker(ancestor):
             return ancestor
         if ancestor == root:
             break
     return None
+
+
+def has_distribution_marker(directory: Path) -> bool:
+    return any((directory / marker).exists() for marker in _DISTRIBUTION_MARKERS)
 
 
 def has_first_party_source(module: str, path: Path, *, facts: FirstPartyFacts | None = None) -> bool:
