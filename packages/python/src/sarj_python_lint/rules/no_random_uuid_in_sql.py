@@ -63,7 +63,7 @@ class NoRandomUuidInSql(Rule):
         category=RuleCategory.PERFORMANCE,
         aliases=("no-gen-random-uuid-in-sql",),
         limitations=(
-            "Detection covers SQL-shaped Python string literals after masking SQL comments and quoted values.",
+            "Detection covers SQL-shaped Python string literals, and SQLAlchemy server_default=text(...) literals, after masking SQL comments and quoted values.",
             "PostgreSQL gen_random_uuid() and uuid-ossp uuid_generate_v4() are covered.",
             "Known UUIDv7 compatibility functions and calls nested inside UUIDv7 bit-building helpers are excluded per occurrence.",
         ),
@@ -118,16 +118,32 @@ class NoRandomUuidInSql(Rule):
                 message=_MESSAGE,
             )
             for node in context.nodes(ast.Constant)
-            if id(node) not in docstrings and isinstance(node.value, str) and _is_offending_sql(node.value)
+            if id(node) not in docstrings
+            and isinstance(node.value, str)
+            and _is_offending_sql(
+                node.value,
+                sql_shaped=(
+                    isinstance(call := context.parents.get(node), ast.Call)
+                    and bool(call.args)
+                    and call.args[0] is node
+                    and (
+                        (isinstance(call.func, ast.Name) and call.func.id == "text")
+                        or (isinstance(call.func, ast.Attribute) and call.func.attr == "text")
+                    )
+                    and isinstance(keyword := context.parents.get(call), ast.keyword)
+                    and keyword.arg == "server_default"
+                    and keyword.value is call
+                ),
+            )
         ]
         diags.sort(key=lambda d: (d.line, d.col))
         return diags
 
 
-def _is_offending_sql(value: str) -> bool:
+def _is_offending_sql(value: str, *, sql_shaped: bool = False) -> bool:
     masked = strip_sql_noise(value)
     matches = tuple(_RANDOM_UUID_RE.finditer(masked))
-    if not matches or not _SQL_SHAPE_RE.search(masked):
+    if not matches or not (sql_shaped or _SQL_SHAPE_RE.search(masked)):
         return False
     if _UUIDV7_FUNCTION_RE.search(masked):
         return False

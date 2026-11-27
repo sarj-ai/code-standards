@@ -76,6 +76,14 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
             'SQL = ("CREATE TABLE t (id UUID DEFAULT "\n       "gen_random_uuid())")\n',
             id="implicitly-concatenated",
         ),
+        pytest.param(
+            'from sqlalchemy import text\nid = mapped_column(primary_key=True, server_default=text("gen_random_uuid()"))\n',
+            id="sqlalchemy-server-default",
+        ),
+        pytest.param(
+            'import sqlalchemy as sa\nCOLUMN = sa.Column("id", primary_key=True, server_default=sa.text("uuid_generate_v4()"))\n',
+            id="sqlalchemy-qualified-server-default",
+        ),
     ],
 )
 def test_flags_embedded_sql(source: str):
@@ -118,6 +126,22 @@ def test_message_names_uuidv7():
         pytest.param(
             'NAME = "gen_random_uuid_helper"\n',
             id="identifier-prefix-only",
+        ),
+        pytest.param(
+            'id = mapped_column(server_default=text("uuidv7()"))\n',
+            id="server-default-uuidv7",
+        ),
+        pytest.param(
+            'DEFAULT_FN = "gen_random_uuid()"\n',
+            id="bare-function-name-string",
+        ),
+        pytest.param(
+            'label = text("gen_random_uuid()")\n',
+            id="text-outside-server-default",
+        ),
+        pytest.param(
+            'id = mapped_column(server_default="gen_random_uuid()")\n',
+            id="server-default-plain-string",
         ),
     ],
 )
