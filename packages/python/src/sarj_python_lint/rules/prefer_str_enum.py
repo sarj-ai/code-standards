@@ -18,14 +18,25 @@ from sarj_python_lint.rule_base import (
     RuleExample,
     Severity,
 )
-from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_annotation_union
-from sarj_python_lint.rules._ast_index import ChildNodes, children, walk, walk as walk_ast
+from sarj_python_lint.rules._annotation_semantics import (
+    AnnotationSemantics,
+    bit_or_members as _flatten_annotation_union,
+)
+from sarj_python_lint.rules._ast_index import (
+    ChildNodes,
+    children,
+    has_own_yield,
+    statement_blocks,
+    walk,
+    walk as walk_ast,
+)
 from sarj_python_lint.rules._imports import ImportIndex
 from sarj_python_lint.rules._paths import is_test_path
+from sarj_python_lint.rules._suite_flow import control_condition, previous_statements
 
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping
+    from collections.abc import Iterator, Mapping
     from pathlib import Path
 
     from sarj_python_lint._file_context import PythonFileContext
@@ -154,6 +165,8 @@ _FILE_MODE_RE = re.compile(r"[rwxabt+]{1,3}")
 _FILE_MODE_KEYS = frozenset({"filemode", "mode", "open_mode", "openmode"})
 
 _MIN_CLUSTER_SIZE = 2
+_DICT_READ_METHODS = frozenset({"copy", "get", "items", "keys", "values"})
+_DICT_READ_BUILTINS = frozenset({"frozenset", "iter", "len", "list", "set", "tuple"})
 
 _EQ = "=="
 _NE = "!="
@@ -197,7 +210,7 @@ class PreferStrEnum(Rule):
         limitations=(
             "Automatic fixes reuse one existing canonical module Literal alias only when its finite string domain strictly contains a closed private nested helper's handled literal match cases and every direct caller supplies a handled-case literal. Reachable fallback exceptions retain manual ownership because their tracebacks can expose private helper frames. An unhandled alias member must keep the existing rejecting fallback reachable; exact handled-domain aliases remain manual because narrowing would introduce an unreachable-pattern type error. Only the str parameter annotation changes; defaults, comments, generics, aliases/escapes, reflection/frame access, shared bodies and runtime enum creation remain manual.",
             "Containing callables must also be ordinary synchronous nongenerators with proven inert execution; unknown callouts, properties, overloads, reachable frame-exporting exceptions, and helper references crossing additional function, class, lambda, or comprehension scopes prevent fixes.",
-            "The rule requires a sibling choice collection or dispatch that explicitly rejects unlisted strings.",
+            "Rejecting dispatch and sibling choice collections are errors. Literal-only string returns and unguarded parameter lookups in a fixed string-keyed mapping are warnings.",
             "Generated code, external vocabularies, open-ended name domains, and test-only comparison clusters are excluded.",
         ),
         examples=(
@@ -384,17 +397,32 @@ class PreferStrEnum(Rule):
     description = documentation.summary
 
     @override
-    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:  # ruff: ignore[too-many-locals] -- traversal state.
-        path = context.path
-        if path.suffix != ".py":
+    def check_context(self, context: PythonFileContext) -> list[Diagnostic]:
+        if context.path.suffix != ".py" or context.generated:
             return []
-        if context.generated:
-            return []
-        if not _has_str_enum_signal(context.symbol_source):
+        source = context.symbol_source
+        dispatch_signal = _has_str_enum_signal(source)
+        authored = not is_test_path(context.path)
+        warning_signal = authored and "str" in source and ('"' in source or "'" in source)
+        return_signal = warning_signal and "return" in source and "->" in source
+        lookup_signal = warning_signal and "{" in source and "[" in source
+        if not (dispatch_signal or return_signal or lookup_signal):
             return []
         tree = context.tree
         if tree is None:
             return []
+        diags = self._dispatch_diagnostics(context, tree) if dispatch_signal else []
+        if return_signal:
+            diags.extend(_literal_return_diagnostics(context, self.code))
+        if lookup_signal:
+            diags.extend(_dict_lookup_diagnostics(context, tree, self.code))
+        diags.sort(key=lambda diag: (diag.line, diag.col))
+        return [diag for diag in diags if not context.suppressions.is_suppressed(diag.line, self.code)]
+
+    def _dispatch_diagnostics(  # ruff: ignore[too-many-locals] -- traversal state.
+        self, context: PythonFileContext, tree: ast.Module
+    ) -> list[Diagnostic]:
+        path = context.path
         signals = context.symbol_source
         class_choice_signal = _has_class_choice_signal(signals)
         wrapper_signal = any(symbol in signals for symbol in ("Annotated", "Optional", "Union"))
@@ -601,8 +629,7 @@ class PreferStrEnum(Rule):
         collect_diagnostics()
 
         diags.extend(class_findings.diagnostics)
-        diags.sort(key=lambda d: (d.line, d.col))
-        return [diag for diag in diags if not context.suppressions.is_suppressed(diag.line, self.code)]
+        return diags
 
     def _all_class_field_diags(
         self,
@@ -620,7 +647,7 @@ class PreferStrEnum(Rule):
         if imports is None:
             return _ClassFieldDiagnostics(diagnostics, member_keys)
         for cls in classes:
-            annotation_scope = _class_annotation_imports(cls, imports, parents)
+            annotation_scope = _scoped_annotation_imports(cls, imports, parents)
             current = self._class_field_diags(
                 path,
                 cls,
@@ -671,6 +698,277 @@ class PreferStrEnum(Rule):
                 )
             )
         return diags
+
+
+def _literal_return_diagnostics(context: PythonFileContext, code: str) -> list[Diagnostic]:
+    if context.has_wildcard_import:
+        return []
+    diagnostics: list[Diagnostic] = []
+    for function in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef):
+        annotation = function.returns
+        parsed = AnnotationSemantics.parse(annotation)
+        if annotation is None or not isinstance(parsed, ast.Name | ast.Attribute | ast.BinOp):
+            continue
+        imports = _scoped_annotation_imports(function, context.imports, context.parents).imports
+        optional = (
+            isinstance(parsed, ast.BinOp)
+            and isinstance(parsed.op, ast.BitOr)
+            and (
+                (_is_none_annotation(parsed.left) and _is_builtin_str(parsed.right, imports))
+                or (_is_none_annotation(parsed.right) and _is_builtin_str(parsed.left, imports))
+            )
+        )
+        if not optional and not _is_builtin_str(parsed, imports):
+            continue
+        tokens = _return_tokens(function.body, optional=optional)
+        if len(tokens) < _MIN_CLUSTER_SIZE or tokens <= EXTERNAL_VOCAB or has_own_yield(function):
+            continue
+        diagnostics.append(
+            Diagnostic(
+                path=context.path,
+                line=annotation.lineno,
+                col=annotation.col_offset + 1,
+                code=code,
+                message=f"Returns only {len(tokens)} fixed tokens — annotate a named `Literal` or `StrEnum`",
+                severity=Severity.WARNING,
+            )
+        )
+    return diagnostics
+
+
+def _return_tokens(body: list[ast.stmt], *, optional: bool) -> set[str]:
+    returns = (
+        statement for block in statement_blocks(body) for statement in block if isinstance(statement, ast.Return)
+    )
+    tokens: set[str] = set()
+    for statement in returns:
+        value = statement.value
+        if optional and (value is None or _is_none_annotation(value)):
+            continue
+        token = _str_const(value) if value is not None else None
+        if token is None or _LOWER_TOKEN_RE.fullmatch(token) is None:
+            return set()
+        tokens.add(token)
+    return tokens
+
+
+def _dict_lookup_diagnostics(context: PythonFileContext, tree: ast.Module, code: str) -> list[Diagnostic]:
+    lookups = [
+        (node, node.value.id, node.slice.id)
+        for node in context.nodes(ast.Subscript)
+        if isinstance(node.value, ast.Name)
+        and isinstance(node.slice, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and not _cluster_is_already_closed(node.slice.id, frozenset())
+    ]
+    if not lookups:
+        return []
+    dictionaries = _fixed_dict_names(tree, context, {name for _node, name, _key in lookups})
+    if not dictionaries:
+        return []
+    diagnostics: dict[ast.arg, Diagnostic] = {}
+    for node, name, key in lookups:
+        if name not in dictionaries:
+            continue
+        argument = _dict_lookup_parameter(node, key, name, context)
+        if argument is None or argument in diagnostics or _dict_lookup_is_guarded(node, key, name, context):
+            continue
+        diagnostics[argument] = Diagnostic(
+            path=context.path,
+            line=argument.lineno,
+            col=argument.col_offset + 1,
+            code=code,
+            message=f"`{key}` indexes a fixed string-keyed mapping — annotate a named `Literal` or `StrEnum`",
+            severity=Severity.WARNING,
+        )
+    return list(diagnostics.values())
+
+
+def _fixed_dict_names(tree: ast.Module, context: PythonFileContext, names: set[str]) -> set[str]:
+    candidates = tuple(_module_dict_literals(tree, context, names))
+    if not candidates or context.has_wildcard_import:
+        return set()
+    inventory = context.binding_inventory
+    module_bindings = inventory.bindings.get(tree, {})
+    return {
+        target.id
+        for target, proxy in candidates
+        if module_bindings.get(target.id) == (target,)
+        and target.id not in inventory.external_bindings
+        and (proxy or all(_read_only_dict_use(read, context) for read in inventory.reads.get(target.id, ())))
+    }
+
+
+def _module_dict_literals(
+    tree: ast.Module, context: PythonFileContext, names: set[str]
+) -> Iterator[tuple[ast.Name, bool]]:
+    for statement in tree.body:
+        match statement:
+            case (
+                ast.Assign(targets=[ast.Name() as target], value=value)
+                | ast.AnnAssign(target=ast.Name() as target, value=ast.expr() as value)
+            ) if target.id in names:
+                pass
+            case _:
+                continue
+        match value:
+            case ast.Dict() if _has_fixed_string_keys(value):
+                yield target, False
+            case ast.Call(func=callee, args=[ast.Dict() as dictionary], keywords=[]) if _has_fixed_string_keys(
+                dictionary
+            ) and context.module_imports.resolves(callee, sources=frozenset({"types"}), symbol="MappingProxyType"):
+                yield target, True
+            case _:
+                pass
+
+
+def _has_fixed_string_keys(dictionary: ast.Dict) -> bool:
+    keys = {_str_const(key) if key is not None else None for key in dictionary.keys}
+    return None not in keys and len(keys) >= _MIN_CLUSTER_SIZE
+
+
+def _read_only_dict_use(read: ast.Name, context: PythonFileContext) -> bool:
+    match context.parents.get(read):
+        case ast.Subscript(value=value, ctx=ast.Load()) | ast.For(iter=value) | ast.comprehension(iter=value):
+            return value is read
+        case ast.Compare(ops=[ast.In() | ast.NotIn()], comparators=[value]):
+            return value is read
+        case ast.Attribute(value=value, attr=method, ctx=ast.Load()):
+            return value is read and method in _DICT_READ_METHODS
+        case ast.Call(func=ast.Name(id=callee), args=[value], keywords=[]):
+            return value is read and callee in _DICT_READ_BUILTINS and context.imports.builtin_is_unshadowed(callee)
+        case _:
+            return False
+
+
+def _dict_lookup_parameter(node: ast.Subscript, key: str, mapping: str, context: PythonFileContext) -> ast.arg | None:
+    inventory = context.binding_inventory
+    lookup_scope = scope = inventory.scope(node)
+    while isinstance(scope, ast.ListComp | ast.SetComp | ast.DictComp | ast.GeneratorExp):
+        if key in inventory.bindings.get(scope, {}):
+            return None
+        scope = inventory.scope(scope)
+    if not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+        return None
+    while lookup_scope is not None and not isinstance(lookup_scope, ast.Module):
+        if mapping in inventory.bindings.get(lookup_scope, {}):
+            return None
+        lookup_scope = inventory.scope(lookup_scope)
+    bindings = inventory.bindings.get(scope, {}).get(key, ())
+    if len(bindings) != 1 or not isinstance(argument := bindings[0], ast.arg):
+        return None
+    if argument is scope.args.vararg or argument is scope.args.kwarg:
+        return None
+    annotation = AnnotationSemantics.parse(argument.annotation)
+    annotations = _scoped_annotation_imports(scope, context.imports, context.parents)
+    return (
+        argument
+        if mapping not in annotations.shadowed_names
+        and annotation is not None
+        and _is_builtin_str(annotation, annotations.imports)
+        else None
+    )
+
+
+def _dict_lookup_is_guarded(node: ast.Subscript, key: str, mapping: str, context: PythonFileContext) -> bool:
+    child: ast.AST = node
+    while (parent := context.parents.get(child)) is not None:
+        if any(
+            _proves_dict_membership(test, key, mapping, truth=truth)
+            for test, truth in _lookup_conditions(child, parent)
+        ):
+            return True
+        if isinstance(child, ast.stmt) and any(
+            _dict_membership_on_fallthrough(stmt, key, mapping) for stmt in previous_statements(child, parent)
+        ):
+            return True
+        if _lookup_handles_missing_key(child, parent, key, context.imports):
+            return True
+        if isinstance(parent, ast.FunctionDef | ast.AsyncFunctionDef):
+            break
+        child = parent
+    return False
+
+
+def _lookup_conditions(child: ast.AST, parent: ast.AST) -> Iterator[tuple[ast.expr, bool]]:
+    if (condition := control_condition(child, parent)) is not None:
+        yield condition
+    match parent:
+        case ast.While() if child in parent.body:
+            yield parent.test, True
+        case ast.BoolOp() if isinstance(child, ast.expr) and child in parent.values:
+            yield from ((test, isinstance(parent.op, ast.And)) for test in parent.values[: parent.values.index(child)])
+        case ast.comprehension() if isinstance(child, ast.expr) and child in parent.ifs:
+            yield from ((test, True) for test in parent.ifs[: parent.ifs.index(child)])
+        case ast.ListComp() | ast.SetComp() | ast.DictComp() | ast.GeneratorExp():
+            yield from ((test, True) for test in _preceding_comprehension_filters(child, parent.generators))
+        case _:
+            pass
+
+
+def _preceding_comprehension_filters(child: ast.AST, generators: list[ast.comprehension]) -> Iterator[ast.expr]:
+    for generator in generators:
+        if generator is child:
+            break
+        yield from generator.ifs
+
+
+def _lookup_handles_missing_key(child: ast.AST, parent: ast.AST, key: str, imports: ImportIndex) -> bool:
+    if not isinstance(parent, ast.Try | ast.TryStar) or child not in parent.body:
+        return False
+    for handler in parent.handlers:
+        if _catches_missing_key(handler, imports):
+            return not _statements_definitely_reject(handler.body, key, imports=None)
+    return False
+
+
+def _catches_missing_key(handler: ast.ExceptHandler, imports: ImportIndex) -> bool:
+    if handler.type is None:
+        return True
+    types = handler.type.elts if isinstance(handler.type, ast.Tuple) else [handler.type]
+    return any(
+        isinstance(exception, ast.Name)
+        and exception.id in {"KeyError", "LookupError", "Exception", "BaseException"}
+        and imports.builtin_is_unshadowed(exception.id)
+        for exception in types
+    )
+
+
+def _dict_membership_on_fallthrough(statement: ast.stmt, key: str, mapping: str) -> bool:
+    match statement:
+        case ast.Assert(test=test):
+            return _proves_dict_membership(test, key, mapping, truth=True)
+        case ast.If(test=test, body=body, orelse=orelse):
+            terminators = (ast.Return, ast.Raise, ast.Continue, ast.Break)
+            return (
+                bool(body)
+                and isinstance(body[-1], terminators)
+                and _proves_dict_membership(test, key, mapping, truth=False)
+            ) or (
+                bool(orelse)
+                and isinstance(orelse[-1], terminators)
+                and _proves_dict_membership(test, key, mapping, truth=True)
+            )
+        case _:
+            return False
+
+
+def _proves_dict_membership(test: ast.expr, key: str, mapping: str, *, truth: bool) -> bool:
+    pending = [(test, truth)]
+    while pending:
+        expression, expected = pending.pop()
+        match expression:
+            case ast.Compare(
+                left=ast.Name(id=left), ops=[ast.In() | ast.NotIn() as op], comparators=[ast.Name(id=right)]
+            ) if left == key and right == mapping and expected == isinstance(op, ast.In):
+                return True
+            case ast.UnaryOp(op=ast.Not(), operand=operand):
+                pending.append((operand, not expected))
+            case ast.BoolOp(op=op, values=values) if expected == isinstance(op, ast.And):
+                pending.extend((value, expected) for value in values)
+            case _:
+                pass
+    return False
 
 
 def _has_class_choice_signal(source: str) -> bool:
@@ -1950,16 +2248,20 @@ def _annotation_type_parameters(owner: ast.AST, parents: Mapping[ast.AST, ast.AS
 
 
 @dataclass(frozen=True, slots=True)
-class _ClassAnnotationScope:
+class _AnnotationScope:
     imports: ImportIndex
     shadowed_names: frozenset[str]
 
 
-def _class_annotation_imports(
-    cls: ast.ClassDef, imports: ImportIndex, parents: Mapping[ast.AST, ast.AST]
-) -> _ClassAnnotationScope:
-    shadowed = _annotation_type_parameters(cls, parents)
-    return _ClassAnnotationScope(
+def _scoped_annotation_imports(
+    owner: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef,
+    imports: ImportIndex,
+    parents: Mapping[ast.AST, ast.AST],
+) -> _AnnotationScope:
+    shadowed = _annotation_type_parameters(owner, parents)
+    if not shadowed:
+        return _AnnotationScope(imports, shadowed)
+    return _AnnotationScope(
         imports=ImportIndex(
             {name: binding for name, binding in imports.bindings.items() if name not in shadowed},
             imports.shadowed_names | shadowed,
