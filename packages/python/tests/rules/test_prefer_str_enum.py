@@ -32,6 +32,196 @@ def test_public_documentation_examples_are_executable(example: RuleExample) -> N
     assert len(PreferStrEnum().check(Path(focus.path), focus.source)) == example.expected_count
 
 
+@pytest.mark.parametrize(
+    ("source", "count", "position"),
+    [
+        (
+            (
+                "def _kind(row: DueCall) -> str:\n"
+                "    if row.batch_call_id is not None:\n"
+                '        return "batch"\n'
+                "    match row.retry_kind:\n"
+                "        case None:\n"
+                '            return "appointment"\n'
+                "        case RetryKind.CONTACT:\n"
+                '            return "contact"\n'
+                "        case RetryKind.FAILURE:\n"
+                '            return "failure"\n'
+            ),
+            4,
+            (1, 28),
+        ),
+        (
+            (
+                "class Admission:\n"
+                "    def _refusal_reason(self) -> str | None:\n"
+                "        def other_reason():\n"
+                "            return self.detail\n"
+                "        if self.draining:\n"
+                '            return "draining"\n'
+                "        if self.full:\n"
+                '            return "capacity"\n'
+                "        return None\n"
+            ),
+            2,
+            (2, 34),
+        ),
+    ],
+    ids=["scheduler-kind", "optional-admission-reason"],
+)
+def test_literal_returns_warn_on_annotation(source: str, count: int, position: tuple[int, int]) -> None:
+    [diagnostic] = _check(source)
+    assert (diagnostic.line, diagnostic.col) == position
+    assert diagnostic.severity is Severity.WARNING
+    assert f"Returns only {count} fixed tokens" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        (
+            'def rendered_message(ok: bool) -> str:\n    if ok:\n        return "The call connected."\n'
+            '    return "The call failed."\n'
+        ),
+        'def choose(flag: bool, fallback: str) -> str:\n    if flag:\n        return "local"\n    return fallback\n',
+        'def states(flag: bool) -> str:\n    yield "waiting"\n    if flag:\n        return "ready"\n    return "done"\n',
+        (
+            'type State = Literal["ready", "done"]\n'
+            'def state(flag: bool) -> State:\n    if flag:\n        return "ready"\n    return "done"\n'
+        ),
+        'def scheme(secure: bool) -> str:\n    if secure:\n        return "https"\n    return "http"\n',
+        'def state[str](flag: bool) -> str:\n    if flag:\n        return "ready"\n    return "done"\n',
+    ],
+    ids=["prose", "computed", "generator", "literal-alias", "external-domain", "type-parameter"],
+)
+def test_literal_returns_leave_open_and_typed_domains_alone(source: str) -> None:
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("source", "line", "parameter"),
+    [
+        (
+            (
+                "def transcription_response(result: Result, response_format: str) -> Response:\n"
+                "    return _BUILDERS[response_format](result)\n"
+                '_BUILDERS: Final[dict[str, Builder]] = {"json": build_json, "srt": build_srt, "vtt": build_vtt}\n'
+                "RESPONSE_FORMATS = frozenset(_BUILDERS)\n"
+            ),
+            1,
+            "response_format",
+        ),
+        (
+            (
+                "from types import MappingProxyType as freeze\n"
+                'PLATFORM = freeze({"dev": "project-dev", "preview": "project-preview", "prod": "project-prod"})\n'
+                "def integration_uri(environment: str, /):\n"
+                "    if environment in PLATFORM:\n"
+                "        log(environment)\n"
+                "    return project_uri(PLATFORM[environment])\n"
+            ),
+            3,
+            "environment",
+        ),
+        (
+            (
+                'BASE = {"asterisk": 1, "kamailio": 2}\n'
+                "def adopt(role: str):\n"
+                "    return any(BASE[role] == expected for expected in values)\n"
+            ),
+            2,
+            "role",
+        ),
+    ],
+    ids=["transcription-builders", "platform-environment", "generator-expression"],
+)
+def test_fixed_lookup_warns_on_parameter(source: str, line: int, parameter: str) -> None:
+    [diagnostic] = _check(source)
+    assert diagnostic.line == line
+    assert diagnostic.severity is Severity.WARNING
+    assert f"`{parameter}` indexes a fixed string-keyed mapping" in diagnostic.message
+
+
+@pytest.mark.parametrize(
+    "lookup",
+    [
+        "return FAQ_TOPICS.get(topic)",
+        "if topic in FAQ_TOPICS and enabled:\n        return FAQ_TOPICS[topic]\n    return None",
+        "if topic not in FAQ_TOPICS:\n        return None\n    return FAQ_TOPICS[topic]",
+        "return FAQ_TOPICS[topic] if topic in FAQ_TOPICS else None",
+        "return topic in FAQ_TOPICS and FAQ_TOPICS[topic]",
+        "while topic in FAQ_TOPICS:\n        return FAQ_TOPICS[topic]",
+        "return [FAQ_TOPICS[topic] for item in items if topic in FAQ_TOPICS]",
+        "try:\n        return FAQ_TOPICS[topic]\n    except KeyError:\n        return None",
+        "FAQ_TOPICS = other\n    return FAQ_TOPICS[topic]",
+        "topic = normalize(topic)\n    return FAQ_TOPICS[topic]",
+    ],
+    ids=[
+        "get",
+        "branch",
+        "early-exit",
+        "conditional-expression",
+        "short-circuit",
+        "while-guard",
+        "comprehension-guard",
+        "caught-key-error",
+        "shadowed-table",
+        "rebound-key",
+    ],
+)
+def test_lookup_without_fixed_parameter_domain_is_ignored(lookup: str) -> None:
+    source = f'FAQ_TOPICS = {{"setup": 1, "billing": 2}}\ndef choose(topic: str):\n    {lookup}\n'
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "CATALOG = replacement",
+        'CATALOG["third"] = 3',
+        "CATALOG.update(additional_topics)",
+        "alias = CATALOG\nalias.clear()",
+        "def replace():\n    global CATALOG\n    CATALOG = replacement",
+    ],
+    ids=["rebind", "subscript-write", "mutating-method", "escaped-alias", "global-rebind"],
+)
+def test_lookup_ignores_mutated_or_rebound_module_tables(change: str) -> None:
+    source = f'CATALOG = {{"setup": 1, "billing": 2}}\ndef choose(topic: str):\n    return CATALOG[topic]\n{change}\n'
+    assert _check(source) == []
+
+
+def test_lookup_excludes_open_key_name_even_inside_builtin_membership_guard() -> None:
+    source = (
+        '_BUILTINS = {"list": list, "dict": dict}\n'
+        "def find(name: str):\n"
+        "    if name in _BUILTINS:\n"
+        "        return _BUILTINS[name]\n"
+    )
+    assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("path", "prefix", "suppression"),
+    [
+        ("tests/test_service.py", "", ""),
+        ("app/service.py", "# @generated\n", ""),
+        ("app/service.py", "", " # sarj-noqa: SARJ006"),
+    ],
+    ids=["test", "generated", "suppressed"],
+)
+def test_new_advice_respects_exclusions(path: str, prefix: str, suppression: str) -> None:
+    source = (
+        f'{prefix}CATALOG = {{"ready": 1, "done": 2}}\n'
+        f"def lookup(status: str):{suppression}\n"
+        "    return CATALOG[status]\n"
+        f"def state(flag: bool) -> str:{suppression}\n"
+        "    if flag:\n"
+        '        return "ready"\n'
+        '    return "done"\n'
+    )
+    assert _check(source, path) == []
+
+
 def test_flags_choice_attr_with_str_field():
     src = """
 from pydantic import BaseModel
@@ -1679,7 +1869,9 @@ def parse(payload) -> str:
         return "embed"
     return "other"
 """
-    assert _check(src) == []
+    [diagnostic] = _check(src)
+    assert diagnostic.severity is Severity.WARNING
+    assert "Returns only 3 fixed tokens" in diagnostic.message
 
 
 def test_traverse_obj_loop_targets_remain_wire_domains():
