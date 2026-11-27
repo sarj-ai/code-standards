@@ -23,7 +23,7 @@
   not precompute action/oracle; cleanup covers partial setup/teardown failure;
   async resources retain their loop.
 - Remove inactive fixtures only after complete owned runs across supported
-  profiles with `pytest-unused-fixtures==0.3.1 --unused-fixtures -v`. Check
+  profiles with `pytest-unused-fixtures --unused-fixtures -v`. Check
   autouse, indirect/dynamic requests, dependencies and plugin registration.
   Focused/skipped/sharded runs are inconclusive. The observer's BasedPyright
   `reportUnusedFunction` is advisory for private helpers.
