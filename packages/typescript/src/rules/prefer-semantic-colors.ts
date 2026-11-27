@@ -516,6 +516,15 @@ export default defineRule({
           break;
         case "TemplateLiteral":
           for (const quasi of node.quasis) reportClasses(quasi.value.cooked ?? "", quasi);
+          node.expressions.forEach((expression, index) => {
+            const before = node.quasis[index]?.value.cooked ?? "";
+            const after = node.quasis[index + 1]?.value.cooked ?? "";
+            if (
+              (/\s$/u.test(before) || (index === 0 && before === "")) &&
+              (/^\s/u.test(after) || (index + 1 === node.quasis.length - 1 && after === "")) &&
+              (expression.type === "ConditionalExpression" || expression.type === "LogicalExpression")
+            ) checkClassNode(expression, objectKeys);
+          });
           break;
         case "ArrayExpression":
           for (const element of node.elements) {

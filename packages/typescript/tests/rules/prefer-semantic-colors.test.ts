@@ -49,6 +49,14 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
     { code: `const x = <div className="bg-primary text-destructive border-border" />;` },
     { code: `const x = <div className="bg-card text-muted-foreground bg-chart-1" />;` },
     { code: `const x = <div className="bg-primary/10 text-foreground/90" />;` },
+    { code: 'const x = <div className={`p-2 ${ok ? "text-foreground" : "text-destructive"}`} />;' },
+    { code: 'const x = <div className={`p-2 ${extraClasses}`} />;' },
+    { code: 'const x = <div className={`p-2 ${pick("text-red-500")}`} />;' },
+    { code: 'const x = <div className={`p-2 ${styles.color}`} />;' },
+    { code: 'const x = <div className={`p-2 ${ok ? "bg-[var(--primary)]" : "text-[rgb(var(--content-error))]"}`} />;' },
+    { code: 'const x = <div className={`hover:${active ? "bg-red-500" : "bg-muted"}`} />;' },
+    { code: 'const x = <div className={`${a ? "bg-red-500" : "bg-muted"}${suffix}`} />;' },
+    { code: 'const x = <div className={`${active ? "bg-red-500" : "bg-muted"}/50`} />;' },
 
     { code: `const x = <div className="text-white bg-black/50" />;` },
     { code: `const x = <path fill="white" />;` },
@@ -177,6 +185,18 @@ RULE_TESTER.run("prefer-semantic-colors", rule, {
 
     {
       code: "const x = <div className={`text-blue-600 ${extra}`} />;",
+      errors: [{ messageId: "rawPalette" }],
+    },
+    {
+      code: 'const x = <span className={`mt-1 block ${tone === "error" ? "text-red-700" : "text-foreground"}`} />;',
+      errors: [{ messageId: "rawPalette" }],
+    },
+    {
+      code: 'const x = <div className={`rounded ${active && "bg-emerald-50 text-emerald-700"}`} />;',
+      errors: [{ messageId: "rawPalette" }, { messageId: "rawPalette" }],
+    },
+    {
+      code: 'const x = <div className={`${done ? "border-emerald-300" : "border-border"}`} />;',
       errors: [{ messageId: "rawPalette" }],
     },
 
