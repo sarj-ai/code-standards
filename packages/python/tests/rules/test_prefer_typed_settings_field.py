@@ -4,6 +4,7 @@ import pytest
 from sarj_rule_contracts.examples import verify_native_rule
 
 from sarj_python_lint.__main__ import analyze
+from sarj_python_lint.rule_base import Severity
 from sarj_python_lint.rules.prefer_typed_settings_field import PreferTypedSettingsField
 
 
@@ -380,3 +381,50 @@ def test_field_inside_inert_metadata_is_not_a_field_constraint(rule: PreferTyped
 def test_direct_annotated_field_constraint_is_active(rule: PreferTypedSettingsField, annotation: str) -> None:
     findings = rule.check(Path("app/models.py"), _BOUND_HEADER + annotation + "\n")
     assert [finding.message.split(";")[0] for finding in findings] == ["Declare this model field with PositiveInt"]
+
+
+@pytest.mark.parametrize(
+    ("imports", "header", "declaration", "expected"),
+    [
+        ("from dataclasses import dataclass", "@dataclass\nclass Record:", "state: str = 'queued'", 1),
+        ("from typing import NamedTuple as Row", "class Record(Row):", "status: str | None = 'completed'", 1),
+        (
+            "import dataclasses as dc",
+            "@dc.dataclass(frozen=True)\nclass Record:",
+            "output_format: str = dc.field(default='text')",
+            1,
+        ),
+        ("from typing import NamedTuple", "class Record(NamedTuple):", "status: str = 'has already completed'", 0),
+        ("from dataclasses import dataclass", "@dataclass\nclass Record:", "title: str = 'record'", 0),
+        ("from dataclasses import dataclass", "@dataclass\nclass Record:", "retry_count: int = 0", 0),
+        (
+            "from dataclasses import dataclass",
+            "@dataclass\nclass Record:",
+            "status: str = 'queued'  # sarj-noqa: SARJ530",
+            0,
+        ),
+        (
+            "from dataclasses import dataclass\ndataclass = replacement",
+            "@dataclass\nclass Record:",
+            "state: str = 'queued'",
+            0,
+        ),
+        (
+            "from dataclasses import dataclass\nfrom typing import Literal",
+            "@dataclass\nclass Record:",
+            "state: Literal['queued', 'done'] = 'queued'",
+            0,
+        ),
+        ("class NamedTuple: pass", "class Record(NamedTuple):", "state: str = 'queued'", 0),
+    ],
+)
+def test_stdlib_record_token_defaults(
+    rule: PreferTypedSettingsField, imports: str, header: str, declaration: str, expected: int
+) -> None:
+    source = f"{imports}\n{header}\n    {declaration}\n"
+    diagnostics = rule.check(Path("app/records.py"), source)
+    assert len(diagnostics) == expected
+    if expected:
+        assert [(item.line, item.col, item.severity) for item in diagnostics] == [
+            (len(source.splitlines()), 5, Severity.WARNING)
+        ]

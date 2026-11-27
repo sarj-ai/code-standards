@@ -37,6 +37,36 @@ _FIELD_VALIDATOR_ARGUMENT_COUNT = 2
 _GUARD_AND_RETURN_STATEMENTS = 2
 _NUMERIC_BOUNDS = frozenset({"gt", "ge", "lt", "le"})
 _COUNT_TOKENS = frozenset({"count", "length", "size", "attempt", "attempts", "page", "limit"})
+_RECORD_CHOICE_SUFFIXES = frozenset(
+    {
+        "action",
+        "category",
+        "channel",
+        "decision",
+        "direction",
+        "env",
+        "environment",
+        "format",
+        "kind",
+        "level",
+        "mode",
+        "outcome",
+        "phase",
+        "priority",
+        "provider",
+        "reason",
+        "role",
+        "scope",
+        "severity",
+        "stage",
+        "state",
+        "status",
+        "strategy",
+        "tier",
+        "type",
+        "verdict",
+    }
+)
 _FIELD_VALIDATORS = frozenset({"pydantic.field_validator", "pydantic.functional_validators.field_validator"})
 _LEGACY_FIELD_VALIDATORS = frozenset({"pydantic.validator", "pydantic.class_validators.validator"})
 _MODEL_VALIDATORS = frozenset(
@@ -80,6 +110,7 @@ class PreferTypedSettingsField(ProjectRule):
         limitations=(
             "Source-proven BaseSettings and BaseModel fields are checked, including source-visible local inheritance and standard import aliases. Existing constrained types, explicit signed bounds, private attributes, model_config and ClassVar/Final metadata remain valid.",
             "Raw numeric fields request an explicit valid domain. Exact zero bounds prefer the matching standard constrained type; stronger positive bounds retain every original constraint. Count/length/size/attempt/page/limit name tokens together with an exact zero default suggest a nonnegative domain; a positive default alone never proves a strictly positive minimum. An unchanged guard-and-return synchronous after-validator with proven classmethod binding can refine that guidance only on a direct native model with no other field/model validators or class-construction/schema override; inherited or transformed contracts retain generic advice. This heuristic is warning-only and a signed domain remains a deliberate option.",
+            "Source-proven stdlib dataclasses and NamedTuple classes also receive the token-default warning on fields with a choice-like final name segment.",
             "Nonempty short identifier-like string defaults request a StrEnum for closed choices or a nominal string type for an open vocabulary. Empty strings, prose, URL handling and existing enum/NewType contracts remain distinct. A default does not prove that every possible value is in a finite enum.",
             "Field providers and annotations use lexical scope, including generic shadowing; Optional and Annotated forms retain their original optionality. Dynamic Field keyword expansions abstain. No automatic rewrite changes coercion, aliases, environment parsing, signed sentinels, NaN/infinity or serialized contracts.",
         ),
@@ -170,6 +201,38 @@ class PreferTypedSettingsField(ProjectRule):
                 expected_count=0,
                 public=True,
             ),
+            RuleExample(
+                example_id="raw-dataclass-token-default",
+                scenario="raw-dataclass-token-default",
+                title="A dataclass status default names a choice",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from dataclasses import dataclass\n@dataclass\nclass Session:\n    status: str = 'completed'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="typed-dataclass-token-default",
+                scenario="raw-dataclass-token-default",
+                title="A dataclass status retains its named domain",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/models.py",
+                        "from dataclasses import dataclass\nfrom typing import Literal\n"
+                        "type Status = Literal['queued', 'completed']\n"
+                        "@dataclass\nclass Session:\n    status: Status = 'completed'\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/models.py"),
+                expected_count=0,
+                public=True,
+            ),
         ),
     )
     description = documentation.summary
@@ -180,7 +243,7 @@ class PreferTypedSettingsField(ProjectRule):
             return []
         contracts = DeclaredContracts(context)
         facts: AnnotationOrigins | None = None
-        findings: list[Diagnostic] = []
+        findings = _record_token_diagnostics(context, self.code)
         for model in context.tree.body:
             if not isinstance(model, ast.ClassDef):
                 continue
@@ -191,6 +254,55 @@ class PreferTypedSettingsField(ProjectRule):
                 facts = AnnotationOrigins(context)
             findings.extend(_settings_fields(resolved, context, contracts, facts, self.code))
         return findings
+
+
+def _record_token_diagnostics(context: PythonFileContext, code: str) -> list[Diagnostic]:
+    if "dataclass" not in context.symbol_source and "NamedTuple" not in context.symbol_source:
+        return []
+    facts = AnnotationOrigins(context)
+    return [
+        diagnostic
+        for model in context.nodes(ast.ClassDef)
+        if _is_native_record(model, facts)
+        for diagnostic in _record_fields(model, facts, code)
+    ]
+
+
+def _is_native_record(model: ast.ClassDef, facts: AnnotationOrigins) -> bool:
+    decorators = (node.func if isinstance(node, ast.Call) else node for node in model.decorator_list)
+    return any(facts.qualified(node, node) == "dataclasses.dataclass" for node in decorators) or any(
+        facts.qualified(base, base) in {"typing.NamedTuple", "typing_extensions.NamedTuple"} for base in model.bases
+    )
+
+
+def _record_fields(model: ast.ClassDef, facts: AnnotationOrigins, code: str) -> Iterator[Diagnostic]:
+    context = facts.context
+    for field in model.body:
+        if not isinstance(field, ast.AnnAssign) or not isinstance(field.target, ast.Name):
+            continue
+        name = field.target.id
+        if name.startswith("_") or name.lower().rsplit("_", 1)[-1] not in _RECORD_CHOICE_SUFFIXES:
+            continue
+        preferred = _token_domain(_record_default(field.value, facts))
+        if preferred is None or _primitive(field.annotation, context, facts) != "str":
+            continue
+        if not context.suppressions.is_suppressed(field.lineno, code):
+            yield Diagnostic(
+                context.path,
+                field.lineno,
+                field.col_offset + 1,
+                code,
+                f"Declare this record field with {preferred}; preserve optionality and the accepted value domain.",
+                severity=Severity.WARNING,
+            )
+
+
+def _record_default(value: ast.expr | None, facts: AnnotationOrigins) -> ast.expr | None:
+    if not isinstance(value, ast.Call) or facts.qualified(value.func, value) != "dataclasses.field":
+        return value
+    if any(keyword.arg is None for keyword in value.keywords):
+        return None
+    return next((keyword.value for keyword in value.keywords if keyword.arg == "default"), None)
 
 
 def _settings_fields(
@@ -309,8 +421,10 @@ def _annotated_field_calls(
 
 
 def _string_domain(default: ast.expr | None) -> str | None:
-    if (url_type := _url_type(default)) is not None:
-        return url_type
+    return _url_type(default) or _token_domain(default)
+
+
+def _token_domain(default: ast.expr | None) -> str | None:
     if isinstance(default, ast.Constant) and isinstance(default.value, str) and _TOKEN_DEFAULT.fullmatch(default.value):
         return (
             "a StrEnum for a closed choice, or an explicit nominal string type for an intentionally open token domain"
@@ -353,8 +467,7 @@ def _numeric_type(
     suffix = "Int" if primitive == "int" else "Float"
     if not _NUMERIC_BOUNDS.isdisjoint(options):
         return _bounded_numeric_type(options, suffix)
-    count_domain = _count_numeric_type(field, default, facts, suffix)
-    if count_domain is not None:
+    if (count_domain := _count_numeric_type(field, default, facts, suffix)) is not None:
         return count_domain
     return f"an explicit numeric domain such as Positive{suffix} or NonNegative{suffix}, or a constrained signed type when negatives are valid"
 
