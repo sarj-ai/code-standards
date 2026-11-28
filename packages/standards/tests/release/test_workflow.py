@@ -405,6 +405,39 @@ def _make_targets(text: str) -> list[str]:
     ] + [line.removeprefix("target=") for line in lines if line.startswith("target=verify-")]
 
 
+@pytest.mark.parametrize(("failures", "status"), [(0, 0), (2, 0), (3, 1)])
+def test_consumer_signature_audit_retries_transient_registry_failures(
+    tmp_path: Path, failures: int, status: int
+) -> None:
+    assert _run("release.yml", "build-typescript", "Verify registry signatures for the consumer dependencies") == (
+        'bash "$GITHUB_WORKSPACE/.github/scripts/release-audit-npm-signatures.sh"'
+    )
+    bin_directory = tmp_path / "bin"
+    bin_directory.mkdir()
+    attempts = tmp_path / "attempts"
+    _write_executable(
+        bin_directory / "npm",
+        f"""
+        #!/usr/bin/env bash
+        echo "$*" >>"{attempts}"
+        (( $(wc -l <"{attempts}") > {failures} ))
+        """,
+    )
+    _write_executable(bin_directory / "sleep", "#!/usr/bin/env bash\n")
+    result = subprocess.run(
+        ("bash", str(REPO_ROOT / ".github/scripts/release-audit-npm-signatures.sh")),
+        env={"PATH": f"{bin_directory}:/usr/bin:/bin", "RUNNER_TEMP": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == status
+    assert attempts.read_text().splitlines() == [
+        f"audit signatures --prefer-online --cache {tmp_path}/npm-consumer-cache"
+    ] * min(failures + 1, 3)
+
+
 def test_wheel_integration_installs_locked_documentation_formatters_before_testing() -> None:
     names = [step.get("name") for step in _steps("release.yml", "build-standards")]
     assert names.index("Install locked documentation formatters") < names.index("Test against the built wheel")
