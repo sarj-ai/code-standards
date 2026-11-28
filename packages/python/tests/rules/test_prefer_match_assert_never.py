@@ -132,7 +132,7 @@ def handle(status: Status):
 
     [finding] = _check(source)
 
-    assert finding.severity.value == "warning"
+    assert finding.severity.value == "error"
     assert "`Status.FAILED`" in finding.message
     assert "Add an explicit arm" in finding.message
 
@@ -156,7 +156,7 @@ def label(error):
 
     [finding] = analyze([PreferMatchAssertNever.id], [path], jobs=1)
 
-    assert finding.severity.value == "warning"
+    assert finding.severity.value == "error"
     assert finding.line == 8
     assert "`Status.CANCELLED`, `Status.FAILED`" in finding.message
 

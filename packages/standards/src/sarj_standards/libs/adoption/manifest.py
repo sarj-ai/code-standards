@@ -9,7 +9,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 import tomllib
-from typing import TYPE_CHECKING, Final, Literal
+from typing import TYPE_CHECKING, Final, Literal, assert_never
 
 from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -937,23 +937,27 @@ def _validate_source_tool_rule(engine: _UpstreamRuleEngine, rule: str, selector:
         security_tools,
     )
 
-    if engine is _UpstreamRuleEngine.SHELLCHECK:
-        valid = re.fullmatch(r"SC[0-9]{4}", rule) is not None
-    elif engine is _UpstreamRuleEngine.SHFMT:
-        valid = rule == "format"
-    elif engine is _UpstreamRuleEngine.KNIP:
-        valid = rule == "files"
-    elif engine is _UpstreamRuleEngine.SQLFLUFF:
-        from sarj_standards.libs.linting.sqlfluff_protocol import RULES  # ruff: ignore[import-outside-top-level] -- the opt-in adapter owns its upstream selectors.
+    match engine:
+        case _UpstreamRuleEngine.SHELLCHECK:
+            valid = re.fullmatch(r"SC[0-9]{4}", rule) is not None
+        case _UpstreamRuleEngine.SHFMT:
+            valid = rule == "format"
+        case _UpstreamRuleEngine.KNIP:
+            valid = rule == "files"
+        case _UpstreamRuleEngine.SQLFLUFF:
+            from sarj_standards.libs.linting.sqlfluff_protocol import RULES  # ruff: ignore[import-outside-top-level] -- the opt-in adapter owns its upstream selectors.
 
-        valid = rule in RULES
-    elif engine is _UpstreamRuleEngine.STYLELINT:
-        from sarj_standards.libs.linting.stylelint import RULES as STYLELINT_RULES  # ruff: ignore[import-outside-top-level] -- defer the CSS report adapter until its selector is used.
+            valid = rule in RULES
+        case _UpstreamRuleEngine.STYLELINT:
+            from sarj_standards.libs.linting.stylelint import RULES as STYLELINT_RULES  # ruff: ignore[import-outside-top-level] -- defer the CSS report adapter until its selector is used.
 
-        valid = rule in STYLELINT_RULES or rule == "CssSyntaxError"
-    else:
-        known = security_tools.CHECKOV_CHECKS if engine is _UpstreamRuleEngine.CHECKOV else security_tools.ZIZMOR_RULES
-        valid = rule in known
+            valid = rule in STYLELINT_RULES or rule == "CssSyntaxError"
+        case _UpstreamRuleEngine.CHECKOV:
+            valid = rule in security_tools.CHECKOV_CHECKS
+        case _UpstreamRuleEngine.OXLINT | _UpstreamRuleEngine.ZIZMOR:
+            valid = rule in security_tools.ZIZMOR_RULES
+        case _:
+            assert_never(engine)
     if not valid:
         msg = f"unknown Standards rule exclusion: {selector}"
         raise ValueError(msg)
