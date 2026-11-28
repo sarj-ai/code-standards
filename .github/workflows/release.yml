@@ -185,7 +185,7 @@ jobs:
         run: npm install --ignore-scripts --prefer-online --prefix "$RUNNER_TEMP/npm-consumer" --cache "$RUNNER_TEMP/npm-consumer-cache" "$RUNNER_TEMP/npm-artifacts/package.tgz"
       - name: Verify registry signatures for the consumer dependencies
         working-directory: ${{ runner.temp }}/npm-consumer
-        run: npm audit signatures --prefer-online --cache "$RUNNER_TEMP/npm-consumer-cache"
+        run: bash "$GITHUB_WORKSPACE/.github/scripts/release-audit-npm-signatures.sh"
       - name: Bind artifact digest to the build job
         id: artifact_identity
         run: bash ../../.github/scripts/release-bind-artifacts.sh npm
