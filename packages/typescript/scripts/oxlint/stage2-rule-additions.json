@@ -14,6 +14,7 @@
     "@sarj/prefer-typed-cli": { "level": "warn" },
     "@sarj/prefer-nominal-id-members": { "level": "warn" },
     "@sarj/prefer-total-union-record": { "level": "warn" },
+    "@sarj/require-branded-id-schema": { "level": "warn" },
     "@sarj/no-flake-masking": { "level": "error" },
     "@sarj/no-unsignaled-poll": { "level": "warn" },
     "@sarj/prefer-zod-field-bounds": { "level": "warn" },

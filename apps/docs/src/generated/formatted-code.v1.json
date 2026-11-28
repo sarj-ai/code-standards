@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ebb41d0113bccc728a1e0112b2e4ab5eb5972eccfb3ff2607ca2113731b53a91",
-  "cliSha256": "7494dcc971565dbe60852c6b2d651a1bd80ee76fb45ff0c5d36171375303e823",
+  "catalogSha256": "81e71f573c9f5ccd7155d7d930d68b626d1d8cfddfbdc077cb284f0fc8db5d34",
+  "cliSha256": "7c1a6f2b8d60bcd31132db29637bc7b5f9d2123391bb3468b772fe73bb30f6f1",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -10961,6 +10961,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not leave an exhaustive default empty"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:require-branded-id-schema": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/recording.ts",
+              "source": "import { z } from \"zod\";\nconst TakeIdSchema = z.uuid().brand<\"TakeId\">();\nconst SessionIdSchema = z.uuid().brand<\"SessionId\">();\nexport const RecordingSchema = z.strictObject({\n  takeId: TakeIdSchema,\n  sessionId: SessionIdSchema,\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/recording.ts",
+          "id": "recording-ids-with-brands",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Brand each parsed identifier with its own domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/recording.ts",
+              "source": "import { z } from \"zod\";\nexport const RecordingSchema = z.strictObject({\n  takeId: z.uuid(),\n  sessionId: z.uuid(),\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/recording.ts",
+          "id": "recording-ids-without-brands",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A take and a session validate as the same type"
         }
       ],
       "optionsSchemaSource": null

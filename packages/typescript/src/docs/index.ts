@@ -161,6 +161,7 @@ import { PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION } from "./production-derive
 import { REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION } from "./react-prefer-updater-function.js";
 import { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "./repeated-static-call-cases.js";
 import { REQUIRE_ASSERT_NEVER_DOCUMENTATION } from "./require-assert-never.js";
+import { REQUIRE_BRANDED_ID_SCHEMA_DOCUMENTATION } from "./require-branded-id-schema.js";
 import { REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION } from "./require-button-accessible-name.js";
 import { REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION } from "./require-camelcase-properties.js";
 import { REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION } from "./require-constrained-schema-integer.js";
@@ -342,6 +343,7 @@ export const RULE_DOCUMENTATION = {
   "react-prefer-updater-function": REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION,
   "repeated-static-call-cases": REPEATED_STATIC_CALL_CASES_DOCUMENTATION,
   "require-assert-never": REQUIRE_ASSERT_NEVER_DOCUMENTATION,
+  "require-branded-id-schema": REQUIRE_BRANDED_ID_SCHEMA_DOCUMENTATION,
   "require-button-accessible-name": REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
   "require-camelcase-properties": REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
   "require-constrained-schema-integer": REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION,

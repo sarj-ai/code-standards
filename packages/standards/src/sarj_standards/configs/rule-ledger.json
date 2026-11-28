@@ -495,6 +495,7 @@
       "react-prefer-updater-function",
       "repeated-static-call-cases",
       "require-assert-never",
+      "require-branded-id-schema",
       "require-button-accessible-name",
       "require-camelcase-properties",
       "require-constrained-schema-integer",

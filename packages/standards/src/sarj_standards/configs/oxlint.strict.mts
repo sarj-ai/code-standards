@@ -1026,6 +1026,7 @@ const RULES = {
   "@sarj/react-prefer-updater-function": "error",
   "@sarj/repeated-static-call-cases": "error",
   "@sarj/require-assert-never": "error",
+  "@sarj/require-branded-id-schema": "warn",
   "@sarj/require-button-accessible-name": ["error", {}],
   "@sarj/require-camelcase-properties": "error",
   "@sarj/require-constrained-schema-integer": "error",

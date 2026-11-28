@@ -3975,6 +3975,14 @@
       "state": "pending",
       "evidence": "A runtime check reproduced plain-value exposure in Pydantic model representations and masking with SecretStr. An isolated comparison across 64 files at six pinned revisions added 103 warnings and detected all nine existing settings-exposure cases. The rule can also match public values, digests and secret references. Broader consumer calibration remains pending.",
       "outcome": "Ship SARJ613 at WARNING. Use SecretStr or SecretBytes where credential masking fits the model contract and keep intentional raw serialization explicit."
+    },
+    {
+      "task": "rule-audit/typescript/require-branded-id-schema",
+      "family": "typescript",
+      "ruleId": "require-branded-id-schema",
+      "state": "pending",
+      "evidence": "Distinct Zod brands rejected an identifier swap that passed primitive UUID validation. The isolated scan of 9,206 files added 274 warnings. A deterministic sample of 30 findings included one same-domain pair and three mixed-field findings that inferred branding from references to raw schemas.",
+      "outcome": "Warn when named identifier schemas or direct primitive aliases lose their domain, or when a direct Zod object mixes branded and raw identifiers or shares a scalar carrier across distinct raw roles. Branding changes the output type, so remediation is manual."
     }
   ]
 }
