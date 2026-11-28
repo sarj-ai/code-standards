@@ -738,7 +738,14 @@ def test_package_qualification_preserves_non_documentation_prerequisites() -> No
     package_needs = packages["needs"]
     assert is_object_list(full_needs)
     assert is_object_list(package_needs)
-    assert set(package_needs) == set(full_needs) - {"docs-build", "docs-deploy", "npm-audit", "packages-complete"}
+    assert set(package_needs) == set(full_needs) - {
+        "docs-build",
+        "docs-deploy",
+        "npm-audit",
+        "packages-complete",
+        "python-compatibility",
+        "codeql",
+    }
     assert packages["if"] == "always()"
     assert "ci-record-analysis.sh" not in json.dumps(packages)
     assert _job("ci.yml", "docs-deploy")["needs"] == ["docs-build", "npm-audit"]
