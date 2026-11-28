@@ -431,6 +431,7 @@ const RULES = {
       "allowProtectedClassPropertyAccess": false
     }
   ],
+  "typescript/method-signature-style": ["warn", "property"],
   "typescript/no-array-delete": "error",
   "typescript/no-base-to-string": "error",
   "typescript/no-confusing-non-null-assertion": "error",
@@ -540,7 +541,14 @@ const RULES = {
     }
   ],
   "typescript/strict-void-return": "warn",
-  "typescript/switch-exhaustiveness-check": "error",
+  "typescript/switch-exhaustiveness-check": [
+    "error",
+    {
+      "allowDefaultCaseForExhaustiveSwitch": true,
+      "considerDefaultExhaustiveForUnions": false,
+      "requireDefaultForNonUnion": false
+    }
+  ],
   "typescript/triple-slash-reference": "error",
   "typescript/unbound-method": "error",
   "typescript/unified-signatures": "error",
@@ -730,6 +738,10 @@ const RULES = {
     {
       "selector": "TSModuleDeclaration[kind='namespace']",
       "message": "Use ES modules instead of namespaces."
+    },
+    {
+      "selector": "TSModuleDeclaration[id.type='Literal']:not([body])",
+      "message": "Declare this module's exports explicitly. Use an empty module body for side-effect-only imports."
     }
   ],
   "eslint-js/preserve-caught-error": ["error", {"requireCatchParameter": true, "errorClassNames": []}],
