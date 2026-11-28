@@ -70,10 +70,28 @@ def test_allows_distinct_nominal_operational_and_wire_ids(source: str) -> None:
 
 @pytest.mark.parametrize(
     "path",
-    ["app/generated/client.py", "app/migrations/versions/001.py", "app/providers/github/client.py"],
+    [
+        "app/generated/client.py",
+        "app/migrations/versions/001.py",
+        "app/providers/github/client.py",
+        "common/integrations/vendor/crm/models/calls.py",
+        "common/adapters/vendor/v2/models.py",
+    ],
 )
 def test_skips_generated_migrations_and_external_adapters(path: str) -> None:
-    assert _check("def move(file_id: str, folder_id: str) -> None: ...\n", path) == []
+    assert _check("class Call:\n    who_id: str\n    what_id: str\n", path) == []
+
+
+def test_checks_swappable_ids_in_first_party_integration_models() -> None:
+    findings = _check(
+        "from dataclasses import dataclass\nfrom uuid import UUID\n"
+        "@dataclass\nclass Task:\n    canary_request_id: UUID\n    suite_run_id: UUID\n",
+        "python/integration/example/service/integration/models/task.py",
+    )
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+    assert "canary_request_id" in findings[0].message
+    assert "suite_run_id" in findings[0].message
 
 
 def test_exact_suppression_is_recognized() -> None:
@@ -153,6 +171,22 @@ def _project_check(tmp_path: Path, source: str, definitions: str) -> list[Diagno
     path = package / "service.py"
     path.write_text(source)
     return PreferNominalIdTypes().check(path, source)
+
+
+def test_checks_established_id_in_first_party_integration(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "integration"\nversion = "0.1.0"\n')
+    package = tmp_path / "example/service/integration"
+    package.mkdir(parents=True)
+    (package / "ids.py").write_text("from typing import NewType\nRunId = NewType('RunId', str)\n")
+    path = package / "platform_api.py"
+    source = "from dataclasses import dataclass\n@dataclass\nclass Conversation:\n    run_id: str | None\n"
+    path.write_text(source)
+
+    findings = PreferNominalIdTypes().check(path, source)
+
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.ERROR
+    assert "`run_id` uses a raw carrier despite an established matching nominal identifier" in findings[0].message
 
 
 @pytest.mark.parametrize(
