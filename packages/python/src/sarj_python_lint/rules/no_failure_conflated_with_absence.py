@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from enum import Flag, auto
+from itertools import chain
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING, final, override
 
@@ -33,7 +34,25 @@ if TYPE_CHECKING:
     from sarj_python_lint._file_context import PythonFileContext
 
 
-_LOOKUPS = frozenset(f"builtins.{name}" for name in LOOKUP_EXCEPTIONS)
+_OS_FAILURES = frozenset(
+    {
+        "OSError",
+        "BrokenPipeError",
+        "ConnectionError",
+        "ConnectionAbortedError",
+        "ConnectionRefusedError",
+        "ConnectionResetError",
+        "PermissionError",
+        "TimeoutError",
+    }
+)
+_TRANSPORT_FAILURES = frozenset(f"builtins.{name}" for name in _OS_FAILURES) | {
+    "asyncio.TimeoutError",
+    "asyncio.exceptions.TimeoutError",
+    "google.auth.exceptions.TransportError",
+}
+_GOOGLE_AUTH_FAILURE = "google.auth.exceptions.GoogleAuthError"
+_GOOGLE_TOKEN_VERIFIERS = ("google.oauth2.id_token.verify_oauth2_token", "google.oauth2.id_token.verify_token")
 _OTHER_OWNERS = frozenset(
     {"builtins.Exception", "builtins.BaseException", "asyncio.CancelledError", "asyncio.exceptions.CancelledError"}
 )
@@ -87,8 +106,9 @@ class NoFailureConflatedWithAbsence(ProjectRule):
                 "tests and generated files are excluded. Ambiguous exception bindings and complex finalizers abstain."
             ),
             (
-                "Fall-through is established through modeled match arms and loop exhaustion. Two paths can "
-                "intentionally use None to communicate the same outcome."
+                "Requires a known I/O or transport failure, a Google ID-token verification that can fail fetching "
+                "certificates, or a Pydantic validation failure from an awaited read whose result is explicitly "
+                "tested for None. Input parsing, expected misses and unclassified domain exceptions abstain."
             ),
         ),
         examples=(
@@ -128,7 +148,7 @@ class NoFailureConflatedWithAbsence(ProjectRule):
                 or (returned := _handler_return(handler)) is None
                 or (function := _reachable_function(handler, context)) is None
                 or not _has_normal_absence(function, context)
-                or not _specific_failure(handler.type, context)
+                or not _proven_failure(handler, context)
             ):
                 continue
             diagnostics.append(
@@ -211,10 +231,73 @@ def _is_log(statement: ast.stmt) -> bool:
             return False
 
 
-def _specific_failure(expression: ast.expr, context: PythonFileContext) -> bool:
-    parts = expression.elts if isinstance(expression, ast.Tuple) else [expression]
+def _proven_failure(handler: ast.ExceptHandler, context: PythonFileContext) -> bool:
+    match handler.type, context.parents.get(handler):
+        case ast.Tuple(elts=parts), ast.Try() as protected:
+            pass
+        case ast.expr() as expression, ast.Try() as protected:
+            parts = [expression]
+        case _:
+            return False
     names = {_exception_name(part, context) for part in parts}
-    return None not in names and names.isdisjoint(_OTHER_OWNERS) and bool(names - _LOOKUPS)
+    if None in names or not names.isdisjoint(_OTHER_OWNERS):
+        return False
+    if not names.isdisjoint(_TRANSPORT_FAILURES):
+        return True
+    if _GOOGLE_AUTH_FAILURE in names and _verifies_google_token(protected, context):
+        return True
+    return "pydantic.ValidationError" in names and _reads_nullable_record(protected, context)
+
+
+def _verifies_google_token(protected: ast.Try, context: PythonFileContext) -> bool:
+    provenance = context.resource_provenance
+    scope = provenance.scope(protected)
+    return any(
+        isinstance(node, ast.Call)
+        and provenance.scope(node) is scope
+        and provenance.runtime_import_name(node.func) in _GOOGLE_TOKEN_VERIFIERS
+        for node in chain.from_iterable(ast.walk(statement) for statement in protected.body)
+    )
+
+
+def _reads_nullable_record(protected: ast.Try, context: PythonFileContext) -> bool:
+    match protected.body:
+        case [
+            ast.Assign(targets=[ast.Name() as target], value=ast.Await(value=ast.Call()))
+            | ast.AnnAssign(target=ast.Name() as target, value=ast.Await(value=ast.Call()))
+        ]:
+            pass
+        case _:
+            return False
+    function = context.parents.get(protected)
+    if not isinstance(function, ast.AsyncFunctionDef) or protected not in function.body:
+        return False
+    if tuple(context.runtime_bindings.lookup(function, target.id) or ()) != (target,):
+        return False
+    for statement in function.body[function.body.index(protected) + 1 :]:
+        match statement:
+            case ast.Assign() | ast.AnnAssign():
+                continue
+            case ast.If(test=test, body=body):
+                match test:
+                    case ast.BoolOp(op=ast.Or(), values=conditions):
+                        pass
+                    case _:
+                        conditions = [test]
+                return _Flow.RETURNS_NONE in _normal_flow(body) and any(
+                    _is_missing_record(condition, target.id) for condition in conditions
+                )
+            case _:
+                return False
+    return False
+
+
+def _is_missing_record(condition: ast.expr, name: str) -> bool:
+    match condition:
+        case ast.Compare(left=ast.Name(id=record), ops=[ast.Is()], comparators=[ast.Constant(value=None)]):
+            return record == name
+        case _:
+            return False
 
 
 def _exception_name(expression: ast.expr, context: PythonFileContext) -> str | None:
@@ -266,6 +349,8 @@ def _project_exception(expression: ast.expr, context: PythonFileContext, qualifi
         return None
     if project.symbol_inherits_builtin(symbol, LOOKUP_EXCEPTIONS):
         return "builtins.LookupError"
+    if project.symbol_inherits_builtin(symbol, _OS_FAILURES):
+        return "builtins.OSError"
     if project.symbol_inherits_builtin(symbol, BUILTIN_EXCEPTIONS):
         return f"{symbol.module}.{symbol.name}"
     return None
