@@ -398,5 +398,6 @@
   "SARJ609": "require-strict-pydantic-model",
   "SARJ610": "no-http-exception-in-services",
   "SARJ611": "prefer-decimal-money",
-  "SARJ612": "no-enum-literal-comparison"
+  "SARJ612": "no-enum-literal-comparison",
+  "SARJ613": "prefer-secret-field-type"
 }

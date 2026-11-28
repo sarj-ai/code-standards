@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "d9c3f9044b15c6ffcb0c37505f3f2884170a9c2309ad0d329f2ff29fd863602b",
-  "cliSha256": "e5957abb4c0ff8aa937d1442aaee0705275a6013ff62286b915b29a5d0644832",
+  "catalogSha256": "02d5a0285739fec5b25a143807a3b00e57b22bdfc584ab242af56b3a8ef29934",
+  "cliSha256": "624dcf7bdae383df9e6cbac722313affb11d767cc5799f251e128cebbc847fd7",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -22295,6 +22295,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Return a validated domain value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-secret-field-type": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings\n\n\nclass CloudflareSettings(BaseSettings):\n    api_token: SecretStr\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "masked-settings-credential",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A settings field masks its credential"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass GoogleTokenResponse(BaseModel):\n    access_token: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "plaintext-model-credential",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A model exposes its access token"
         }
       ],
       "optionsSchemaSource": null

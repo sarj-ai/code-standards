@@ -33,7 +33,7 @@ def test_leading_word_matches_words_not_prefixes(identifier: str, word: str) -> 
 
 @pytest.mark.parametrize(
     "identifier",
-    ["apiKey", "authToken", "SESSION_SECRET", "validToken", "presentToken"],
+    ["apiKey", "authToken", "SESSION_SECRET", "validToken", "presentToken", "page_access_token", "cursor_secret"],
 )
 def test_secret_names_include_split_and_compound_credentials(identifier: str) -> None:
     assert is_secret_name(identifier)
@@ -43,6 +43,9 @@ def test_secret_names_include_split_and_compound_credentials(identifier: str) ->
     "identifier",
     [
         "token_count",
+        "next_page_token",
+        "nextPageToken",
+        "next_cursor_token",
         "promptTokens",
         "apiKeyId",
         "passwordEnabled",
