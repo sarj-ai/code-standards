@@ -984,6 +984,7 @@ const RULES = {
   "@sarj/prefer-module-level-schema": ["error", {}],
   "@sarj/prefer-multi-value-zod-literal": ["error", {"zodMajorVersion": 4}],
   "@sarj/prefer-named-callback-domain": "error",
+  "@sarj/prefer-named-literal-union": "warn",
   "@sarj/prefer-named-complex-return-type": "error",
   "@sarj/prefer-native-fetch-in-server-actions": "warn",
   "@sarj/prefer-native-random-uuid": "error",

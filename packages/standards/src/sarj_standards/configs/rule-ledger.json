@@ -465,6 +465,7 @@
       "prefer-multi-value-zod-literal",
       "prefer-named-callback-domain",
       "prefer-named-complex-return-type",
+      "prefer-named-literal-union",
       "prefer-native-fetch-in-server-actions",
       "prefer-native-random-uuid",
       "prefer-node-crypto-hash",

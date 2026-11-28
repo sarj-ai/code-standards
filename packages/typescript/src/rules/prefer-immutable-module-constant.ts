@@ -63,6 +63,7 @@ type GlobalResolver = (identifier: Identifier) => boolean;
 type LocalType = ESTree.TSTypeAliasDeclaration | ESTree.TSTypeParameter;
 type LocalTypeResolver = (identifier: Identifier) => LocalType | undefined;
 type TypeArguments = ReadonlyMap<ESTree.TSTypeParameter, TypeArgument>;
+type CollectionKind = "literal" | "Set" | "Map";
 type ReadonlyState = "readonly" | "mutable" | "unknown";
 type TypeArgument = {
   readonly node: Node;
@@ -97,7 +98,7 @@ function isObjectFreeze(node: Node, isUnshadowedGlobal: GlobalResolver): boolean
   return argument !== null && collectionKind(argument, isUnshadowedGlobal) === "literal";
 }
 
-function collectionKind(node: Node, isUnshadowedGlobal: GlobalResolver): "literal" | "Set" | "Map" | null {
+function collectionKind(node: Node, isUnshadowedGlobal: GlobalResolver): CollectionKind | null {
   const inner = unwrapExpression(node);
   const frozen = frozenArgument(inner, isUnshadowedGlobal);
   if (frozen !== null) return collectionKind(frozen, isUnshadowedGlobal);
@@ -117,7 +118,7 @@ function collectionKind(node: Node, isUnshadowedGlobal: GlobalResolver): "litera
 
 function declaredReadonlyType(
   node: ESTree.VariableDeclarator,
-  kind: "literal" | "Set" | "Map",
+  kind: CollectionKind,
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
 ): boolean {
@@ -132,7 +133,7 @@ function declaredReadonlyType(
 
 function readonlyTypeState(
   node: Node,
-  kind: "literal" | "Set" | "Map",
+  kind: CollectionKind,
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
   arguments_: TypeArguments = new Map(),
@@ -174,7 +175,7 @@ function bindTypeArguments(
   return bindings;
 }
 
-function directReadonlyState(node: Node, kind: "literal" | "Set" | "Map", isUnshadowedType: GlobalResolver): ReadonlyState {
+function directReadonlyState(node: Node, kind: CollectionKind, isUnshadowedType: GlobalResolver): ReadonlyState {
   if (node.type === "TSTypeOperator" && node.operator === "readonly") {
     return "readonly";
   }
@@ -193,7 +194,7 @@ function directReadonlyState(node: Node, kind: "literal" | "Set" | "Map", isUnsh
 }
 
 /** The state a global `Readonly`, collection or readonly-collection type gives a `kind` value. */
-function globalTypeState(name: string, kind: "literal" | "Set" | "Map"): ReadonlyState {
+function globalTypeState(name: string, kind: CollectionKind): ReadonlyState {
   if (name === "Readonly") return kind === "literal" ? "readonly" : "mutable";
   if (["Array", "Map", "Set"].includes(name)) return "mutable";
   if (!["ReadonlyArray", "ReadonlyMap", "ReadonlySet"].includes(name)) return "unknown";
@@ -203,7 +204,7 @@ function globalTypeState(name: string, kind: "literal" | "Set" | "Map"): Readonl
 
 function hasUnknownExplicitType(
   node: ESTree.VariableDeclarator,
-  kind: "literal" | "Set" | "Map",
+  kind: CollectionKind,
   resolveLocalType: LocalTypeResolver,
   isUnshadowedType: GlobalResolver,
 ): boolean {
@@ -323,7 +324,7 @@ export default defineRule({
       return false;
     };
     /** The collection `init` builds, unless the declaration types it readonly or with a type this rule cannot read. */
-    const mutableCollectionKind = (node: ESTree.VariableDeclarator, init: Node): "literal" | "Set" | "Map" | null => {
+    const mutableCollectionKind = (node: ESTree.VariableDeclarator, init: Node): CollectionKind | null => {
       const kind = collectionKind(init, isUnshadowedGlobal);
       if (kind === null || declaredReadonlyType(node, kind, resolveLocalType, isUnshadowedType) ||
         hasUnknownExplicitType(node, kind, resolveLocalType, isUnshadowedType)) return null;

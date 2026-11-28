@@ -132,6 +132,7 @@ import { PREFER_MONOTONIC_FOR_ELAPSED_TIME_DOCUMENTATION } from "./prefer-monoto
 import { PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION } from "./prefer-multi-value-zod-literal.js";
 import { PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION } from "./prefer-named-callback-domain.js";
 import { PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION } from "./prefer-named-complex-return-type.js";
+import { PREFER_NAMED_LITERAL_UNION_DOCUMENTATION } from "./prefer-named-literal-union.js";
 import { PREFER_NATIVE_FETCH_IN_SERVER_ACTIONS_DOCUMENTATION } from "./prefer-native-fetch-in-server-actions.js";
 import { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "./prefer-native-random-uuid.js";
 import { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "./prefer-node-crypto-hash.js";
@@ -312,6 +313,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-multi-value-zod-literal": PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
   "prefer-named-callback-domain": PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION,
   "prefer-named-complex-return-type": PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION,
+  "prefer-named-literal-union": PREFER_NAMED_LITERAL_UNION_DOCUMENTATION,
   "prefer-native-fetch-in-server-actions": PREFER_NATIVE_FETCH_IN_SERVER_ACTIONS_DOCUMENTATION,
   "prefer-native-random-uuid": PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
   "prefer-node-crypto-hash": PREFER_NODE_CRYPTO_HASH_DOCUMENTATION,

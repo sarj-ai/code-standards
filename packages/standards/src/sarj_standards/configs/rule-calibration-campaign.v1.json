@@ -71,6 +71,14 @@
       "outcome": "Ship at WARNING. Share the existing closure proof and suggest a total record for the proven key domain. Review fallback and public contract changes manually. Broader calibration remains pending."
     },
     {
+      "task": "rule-audit/typescript/prefer-named-literal-union",
+      "family": "typescript",
+      "ruleId": "prefer-named-literal-union",
+      "state": "pending",
+      "evidence": "Focused RuleTester suites passed 38 cases across the new rule and the callback rule. Six pinned consumer files reproduced both repetition thresholds and alias reuse. A two-member domain used twice stayed below the threshold, and the second fix pass left the consumer alias replacement unchanged.",
+      "outcome": "Ship at WARNING. Suggest a named alias for repeated string literal domains, with an automatic replacement when one visible nongeneric alias preserves the full member set. Broader calibration remains pending."
+    },
+    {
       "task": "rule-audit/python/no-nonlocal-statement",
       "family": "python",
       "ruleId": "no-nonlocal-statement",
