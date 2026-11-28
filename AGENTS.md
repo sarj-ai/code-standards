@@ -15,21 +15,15 @@ Examples: banning a tracked verifier filename belongs in `repo-standards`; rejec
 Terraform expression that derives access from `var.environment` belongs here.
 
 For rule work, follow `plugins/sarj-skills/skills/lint-rule-generator/SKILL.md`. Run
-`make verify` before review.
+the focused tests for the change before review; CI owns the full suites. `make verify`
+and `Native make verify` are optional diagnostics, not merge gates.
 
-When this checkout's `verify` target calls `.github/scripts/make-local-check.sh`
-and `sarj-local-check` is installed, run `make verify` directly so its phases can
-yield shared capacity. Keep the outer supervisor for older checkouts, other
-targets, and Git hooks.
-
-When local admission is delayed, `Native make verify` can run the same target
-on the candidate branch. Reuse a running or successful exact-head workflow run,
-or dispatch `native-verify.yml` on that branch. A complete successful exact-head
-workflow job satisfies `make verify` before review.
-
-Before merging a version-bumping PR, rebase it onto current main and bump past
-any version main gained since it branched; two bumps merged back to back can
-claim the same version, as #2143 and #2150 did with Core 9.0.1.
+To merge, rebase onto current main, bump each changed package past main's version
+with exact sibling pins (two bumps merged back to back can claim one version, as
+#2143 and #2150 did), regenerate generated files, and push. Squash-merge with
+`--admin` once the required checks pass. If a later rebase changed only versions or
+generated files, merge once `release-ready` passes. Release refuses a main revision
+whose CI failed, so fix a red main forward.
 
 For release recovery, never retarget an immutable package tag. If publishable
 files changed after a tagged version, bump the affected package and exact

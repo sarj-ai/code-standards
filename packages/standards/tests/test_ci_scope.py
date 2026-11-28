@@ -397,6 +397,7 @@ class WorkflowJob(BaseModel):
     needs: str | list[str] | None = None
     name: str = ""
     condition: str = Field(default="", alias="if")
+    outputs: dict[str, str] = Field(default_factory=dict)
     steps: list[WorkflowStep] = Field(default_factory=list)
 
 
@@ -437,7 +438,7 @@ def test_required_standards_gate_requires_both_lanes_and_routing() -> None:
         "needs.static-analysis.result != 'success'",
         "needs.package-tests.result != 'success'",
         "needs.adoption-smoke.result != 'success'",
-        "needs.python-compatibility.result != 'success'",
+        "(github.event_name != 'pull_request' && needs.python-compatibility.result != 'success')",
     }
     assert guard.run == "exit 1"
 
@@ -451,7 +452,7 @@ def test_required_matrix_checks_keep_their_names_when_unaffected() -> None:
     assert workflow("ci.yml").jobs["npm-audit"].name == "npm-audit (apps/docs)"
 
 
-@pytest.mark.parametrize("job_name", ["portability-smoke", "adoption-smoke", "python-compatibility"])
+@pytest.mark.parametrize("job_name", ["portability-smoke", "adoption-smoke"])
 def test_smoke_reuse_requires_complete_reviewed_ci_and_keeps_fresh_fallback(job_name: str) -> None:
     job = workflow("ci.yml").jobs[job_name]
     # Routing failure is rejected before any proof can be reused. Job success
@@ -466,6 +467,17 @@ def test_smoke_reuse_requires_complete_reviewed_ci_and_keeps_fresh_fallback(job_
     for step in job.steps[3:]:
         assert step.condition == "needs.changes.outputs.reviewed-ci != 'true'"
     assert any(step.run for step in job.steps[3:])
+
+
+def test_minimum_runtime_and_codeql_run_fresh_after_merge_instead_of_on_pull_requests() -> None:
+    ci = workflow("ci.yml")
+    compatibility = ci.jobs["python-compatibility"]
+    assert compatibility.condition.startswith("always() && github.event_name != 'pull_request' && ")
+    assert all("reviewed-ci" not in step.condition for step in compatibility.steps)
+    for language in ("python", "javascript-typescript"):
+        assert ci.jobs["changes"].outputs[f"codeql-{language}"] == (
+            f"${{{{ github.event_name != 'pull_request' && steps.scope.outputs.codeql-{language} || 'false' }}}}"
+        )
 
 
 def test_private_reference_fetch_excludes_existing_main_history(repository: Path) -> None:
@@ -699,7 +711,7 @@ def test_parallel_static_gate_propagates_every_background_failure(tmp_path: Path
         '  "run basedpyright src/ tests/ "*) label=types ;;\n'
         '  "run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shellcheck") label=shellcheck ;;\n'
         '  "run python -m sarj_standards.libs.repository.shell_checks --root ../.. --tool shfmt") label=shfmt ;;\n'
-        '  "run code-standards --root ../.. check --trust-repository-code --jobs 2 .") label=dogfood ;;\n'
+        '  "run code-standards --root ../.. check --trust-repository-code --jobs 4 .") label=dogfood ;;\n'
         "  *) exit 99 ;;\n"
         "esac\n"
         'printf "%s\\n" "$label" >> "$CHECK_LOG"\n'

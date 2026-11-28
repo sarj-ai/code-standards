@@ -52,8 +52,8 @@ jobs:
       standards: ${{ steps.scope.outputs.standards }}
       docs: ${{ steps.scope.outputs.docs }}
       mobile: ${{ steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.mobile }}
-      codeql-python: ${{ steps.scope.outputs.codeql-python }}
-      codeql-javascript-typescript: ${{ steps.scope.outputs.codeql-javascript-typescript }}
+      codeql-python: ${{ github.event_name != 'pull_request' && steps.scope.outputs.codeql-python || 'false' }}
+      codeql-javascript-typescript: ${{ github.event_name != 'pull_request' && steps.scope.outputs.codeql-javascript-typescript || 'false' }}
       docs-audit: ${{ (github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && steps.scope.outputs.docs != 'false') && 'true' || steps.reviewed.outputs.reviewed-ci == 'true' && 'false' || steps.scope.outputs.docs-audit }}
       reviewed-static: ${{ steps.reviewed.outputs.reviewed-static }}
       reviewed-docs: ${{ steps.reviewed.outputs.reviewed-docs }}
@@ -251,7 +251,7 @@ jobs:
       - run: uv python install 3.15
       - run: uv sync --locked --dev
       - run: uv audit --locked
-      - run: uv run pytest -q
+      - run: uv run --with pytest-xdist==3.8.0 pytest -q -n auto --dist worksteal
       - run: uv run ruff check src/ tests/
       - run: uv run basedpyright
       - run: uv build
@@ -630,7 +630,7 @@ jobs:
       # manifest and its explicitly opted-in native warning ratchet.
       - name: Check repository standards
         if: needs.changes.outputs.reviewed-static != 'true'
-        run: uv run code-standards --root ../.. check --trust-repository-code --jobs 2 .
+        run: uv run code-standards --root ../.. check --trust-repository-code --jobs 4 .
       - name: Record the successfully checked PR tree
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         run: bash ../../.github/scripts/ci-record-analysis.sh static "$RUNNER_TEMP/reviewed-static"
@@ -853,7 +853,7 @@ jobs:
   python-compatibility:
     name: Python 3.14 compatibility
     needs: changes
-    if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
+    if: always() && github.event_name != 'pull_request' && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
@@ -867,55 +867,37 @@ jobs:
       - name: Fail if check routing failed
         if: needs.changes.result != 'success'
         run: exit 1
-      - name: Reuse successful reviewed smoke validation
-        if: needs.changes.outputs.reviewed-ci == 'true'
-        working-directory: .
-        env:
-          REVIEWED_RUN: ${{ needs.changes.outputs.reviewed-run }}
-        run: echo "Identical checked Git tree; this lane already passed in CI $REVIEWED_RUN." >>"$GITHUB_STEP_SUMMARY"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: needs.changes.outputs.reviewed-ci != 'true'
         with:
           fetch-depth: 0
           persist-credentials: false
       - uses: astral-sh/setup-uv@1db35dd8eee11c5894872e0b383ae6c406cf738d # v10.4.0
-        if: needs.changes.outputs.reviewed-ci != 'true'
         with:
           version: '0.13.10'
           enable-cache: true
           cache-dependency-glob: 'packages/**/uv.lock'
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        if: needs.changes.outputs.reviewed-ci != 'true'
         with:
           node-version-file: .node-version
           cache: npm
           cache-dependency-path: packages/typescript/package-lock.json
       - name: Remove group and other write access from the preinstalled Node
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: bash .github/scripts/ci-restrict-node.sh
       - name: Install the minimum supported Python
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: uv python install 3.14
       - name: Install compatibility dependencies
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: uv sync --project packages/standards --locked --dev --python 3.14
       - name: Install the rule authoring parser
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix packages/typescript ci --ignore-scripts --no-audit --no-fund
       - name: Build the plugin for native Oxlint integration tests
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix packages/typescript run build
       - name: Install the locked documentation formatter dependencies
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: npm --prefix apps/docs ci --ignore-scripts --no-audit --no-fund
       - name: Install the manifest formatter
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: bash .github/scripts/ci-install-taplo.sh
       - name: Install the pinned native tool bootstrap
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: uv run --project packages/standards python -m sarj_standards.libs.adoption.native_bootstrap
       - name: Cache native service package archives
-        if: needs.changes.outputs.reviewed-ci != 'true'
         continue-on-error: true
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         env:
@@ -924,7 +906,6 @@ jobs:
           path: build/native-config-tests/*.deb
           key: native-config-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/scripts/setup-native-config-tests.sh') }}
       - name: Install and attest integration native tools
-        if: needs.changes.outputs.reviewed-ci != 'true'
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -936,10 +917,8 @@ jobs:
             -o APT::Update::Error-Mode=any update
           uv run --project packages/standards python -m sarj_standards.libs.release.native_test_setup --root .
       - name: Record effective CPU capacity
-        if: needs.changes.outputs.reviewed-ci != 'true'
         run: nproc
       - name: Test affected Python packages on the minimum supported runtime
-        if: needs.changes.outputs.reviewed-ci != 'true'
         # Certified base routing already covers unchanged native packages.
         # Missing or unexpected outputs include the suite; weekly/manual audits run all.
         run: >-
@@ -961,7 +940,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Require routing, analysis, wheel tests, and adoption smoke to succeed
-        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success' || needs.adoption-smoke.result != 'success' || needs.python-compatibility.result != 'success'
+        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success' || needs.adoption-smoke.result != 'success' || (github.event_name != 'pull_request' && needs.python-compatibility.result != 'success')
         run: exit 1
 
   docs-build:

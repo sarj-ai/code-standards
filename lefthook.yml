@@ -40,24 +40,6 @@ pre-commit:
       run: uv run --no-config --project packages/standards --frozen code-standards check --staged --fix --trust-repository-code
       fail_text: >-
         Standards staged checks failed. Fix the reported findings and retry.
-    dogfood:
-      priority: 6
-      skip: &unchanged-check-inputs
-        - run: >-
-            git diff --cached --quiet --no-renames --
-            '*.py' '*.pyi' '*.[jt]s' '*.[jt]sx' '*.[cm][jt]s'
-            '*.json*' '*.toml' '*.lock' '*.yml' '*.yaml' '*.sh'
-            ':(glob)**/Makefile' ':(glob)**/.python-version' ':(glob)**/.node-version'
-            ':(glob)**/.npmrc' ':(glob)**/.nvmrc' ':(glob)**/.gitignore' ':(glob)**/py.typed'
-      run: make dogfood
-      fail_text: >-
-        A shipped custom rule reports against the Standards repository itself.
-        Fix the finding before committing.
-    typecheck:
-      priority: 7
-      skip: *unchanged-check-inputs
-      run: make typecheck
-      fail_text: "Standards typecheck failed. Fix the reported error and retry."
 
 commit-msg:
   commands:
@@ -68,13 +50,8 @@ commit-msg:
         infrastructure failures are not message-policy findings.
 
 pre-push:
+  # CI owns lint, type and test verification of the pushed head.
   commands:
-    static-verification:
-      # CI owns the complete package test matrix. Keep push feedback bounded to
-      # lint, type, policy, docs, and artifact-consistency checks.
-      run: make lint
-      fail_text: >-
-        Standards static verification failed. Fix the reported failures before pushing.
     private-refs-commit-messages:
       run: if test -f .sarj-private-refs.toml; then uv run --project packages/standards --frozen code-standards --root . maintain check --only private-refs --commits "$(git merge-base origin/main HEAD)..HEAD"; else echo "private-reference scan delegated to trusted CI"; fi
       fail_text: >-
