@@ -10,20 +10,22 @@
     "run_worker_first": true,
     "directory": "./dist",
     "not_found_handling": "404-page",
-    "html_handling": "force-trailing-slash"
+    "html_handling": "force-trailing-slash",
   },
   "routes": [
+    { "pattern": "sarj.ai/engineering/projects/code-standards", "zone_name": "sarj.ai" },
+    { "pattern": "sarj.ai/engineering/projects/code-standards/*", "zone_name": "sarj.ai" },
     {
       "pattern": "code-standards.sarj.ai",
-      "custom_domain": true
+      "custom_domain": true,
     },
     {
       "pattern": "engineering.sarj.ai/projects/code-standards",
-      "zone_name": "sarj.ai"
+      "zone_name": "sarj.ai",
     },
     {
       "pattern": "engineering.sarj.ai/projects/code-standards/*",
-      "zone_name": "sarj.ai"
-    }
-  ]
+      "zone_name": "sarj.ai",
+    },
+  ],
 }
