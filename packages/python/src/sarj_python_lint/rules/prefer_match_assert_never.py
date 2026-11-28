@@ -92,8 +92,8 @@ class PreferMatchAssertNever(ProjectRule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes remove only an exact single argument-type ignore from an existing terminal assert_never call after every member of a canonical local StrEnum is already handled by terminating identity branches. Missing members, other suppressions, reasons, aliases, guarded branches and dynamic domains remain manual.",
-            "The no-op error requires a parameter annotated with a local enum. The defaulting warning checks match and if/elif dispatch on names and one-level attributes, including enums resolved through direct first-party imports or one re-export.",
-            "The warning requires a direct standard enum base and distinct literal string or integer members. It skips guarded arms, generated files, and dynamic or unresolved enum domains.",
+            "The no-op error requires a parameter annotated with a local enum. The defaulting check handles match and if/elif dispatch on names and one-level attributes, including enums resolved through direct first-party imports or one re-export.",
+            "The defaulting check requires a direct standard enum base and distinct literal string or integer members. It skips guarded arms, generated files, and dynamic or unresolved enum domains.",
             "The defaulting check skips a local whose only bindings are assignments of a proper enum subset in the immediately preceding match.",
             "Independently warns on import-proven assert_never calls with a trailing blanket or argument-type ignore; module-wide disables are not analyzed.",
         ),
@@ -216,7 +216,7 @@ class PreferMatchAssertNever(ProjectRule):
                 continue
             finding = _silent_dispatch_error(
                 node, context, local_enums, local_enum, consumed_elifs=consumed_elifs, code=self.code
-            ) or _defaulting_warning(node, context, closed_enum, self.code)
+            ) or _defaulting_error(node, context, closed_enum, self.code)
             if finding is not None:
                 diags.append(finding)
         diags.sort(key=lambda d: (d.line, d.col))
@@ -490,7 +490,7 @@ def _enum_chain(head: ast.If, lookup: _EnumLookup, *, elif_only: bool = False) -
     return _EnumChain(first.target, _EnumCoverage(domain, frozenset(covered)), branches)
 
 
-def _defaulting_warning(
+def _defaulting_error(
     node: ast.Match | ast.If, context: PythonFileContext, lookup: _EnumLookup, code: str
 ) -> Diagnostic | None:
     if isinstance(node, ast.Match):
@@ -532,7 +532,7 @@ def _defaulting_warning(
         line=anchor.lineno,
         col=anchor.col_offset + 1,
         code=code,
-        severity=Severity.WARNING,
+        severity=Severity.ERROR,
         message=f"Enum dispatch routes {members} through the catch-all. {remedy}",
     )
 
