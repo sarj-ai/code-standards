@@ -21,6 +21,7 @@ from sarj_python_lint.rule_base import (
     Severity,
 )
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts, written_attribute_roots
+from sarj_python_lint.rules._enum_declarations import class_enum_members, stdlib_enum_base
 from sarj_python_lint.rules._finite_literal_dispatch import rejecting_body
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
@@ -36,7 +37,6 @@ if TYPE_CHECKING:
 _MIN_ARMS = 2
 
 _ENUM_BASES = frozenset({"Enum", "StrEnum", "IntEnum", "ReprEnum"})
-_ENUM_SOURCES = frozenset({"enum"})
 _ARGUMENT_IGNORE = re.compile(r"^(?:type|pyright):\s*ignore\b(?:\[([^\]]*)\])?")
 _TYPING_SOURCES = frozenset({"typing", "typing_extensions"})
 
@@ -305,7 +305,7 @@ def _ignores_argument_type(comment: str) -> bool:
 
 def _legacy_enum_domains(context: PythonFileContext, tree: ast.Module) -> dict[str, _EnumDomain]:
     return {
-        node.name: _EnumDomain(node, _class_enum_members(node))
+        node.name: _EnumDomain(node, class_enum_members(node))
         for node in tree.body
         if isinstance(node, ast.ClassDef)
         and any(_is_enum_base(base, context.imports) for base in node.bases)
@@ -314,7 +314,7 @@ def _legacy_enum_domains(context: PythonFileContext, tree: ast.Module) -> dict[s
 
 
 def _is_enum_base(base: ast.expr, imports: ImportIndex) -> bool:
-    return imports.resolved_symbol(base, sources=_ENUM_SOURCES) in _ENUM_BASES
+    return stdlib_enum_base(base, imports) in _ENUM_BASES
 
 
 def _annotated_local_enum(
@@ -568,7 +568,7 @@ def _closed_enum(expression: ast.expr, contracts: DeclaredContracts) -> _EnumDom
     enum = declared.declaration
     if enum.name in written_attribute_roots(tree) or len(enum.bases) != 1:
         return None
-    base = contracts.imports_for(declared.unit).resolved_symbol(enum.bases[0], sources=_ENUM_SOURCES)
+    base = stdlib_enum_base(enum.bases[0], contracts.imports_for(declared.unit))
     if base not in {"Enum", "StrEnum", "IntEnum"}:
         return None
     members = _literal_members(enum, base)
@@ -644,14 +644,3 @@ def _enum_member_set(expressions: Iterable[ast.expr | None], lookup: _EnumLookup
         domain = owner
         covered.add(expression.attr)
     return _EnumCoverage(domain, frozenset(covered)) if domain is not None else None
-
-
-def _class_enum_members(classdef: ast.ClassDef) -> frozenset[str]:
-    return frozenset(
-        target.id
-        for statement in classdef.body
-        if isinstance(statement, (ast.Assign, ast.AnnAssign))
-        and (not isinstance(statement, ast.AnnAssign) or statement.value is not None)
-        for target in (statement.targets if isinstance(statement, ast.Assign) else (statement.target,))
-        if isinstance(target, ast.Name) and not target.id.startswith("_")
-    )

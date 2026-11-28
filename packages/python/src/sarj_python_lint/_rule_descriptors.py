@@ -8,6 +8,15 @@ from sarj_python_lint.rule_metadata import RuleDescriptor
 SCHEMA_VERSION = 1
 DESCRIPTORS: tuple[RuleDescriptor, ...] = (
     RuleDescriptor(
+        rule_id=RuleId("no-enum-literal-comparison"),
+        module="sarj_python_lint.rules.no_enum_literal_comparison",
+        class_name="NoEnumLiteralComparison",
+        code="SARJ612",
+        description="Compare enum values using named members.",
+        aliases=(),
+        enabled_by_default=True,
+    ),
+    RuleDescriptor(
         rule_id=RuleId("prefer-decimal-money"),
         module="sarj_python_lint.rules.prefer_decimal_money",
         class_name="PreferDecimalMoney",
