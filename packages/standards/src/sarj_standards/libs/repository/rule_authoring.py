@@ -46,6 +46,8 @@ class AuthoringPlan:
         lines = [f"rule: {self.selector}", f"code: {self.code or 'engine-native'}"]
         lines.extend(f"create: {path.relative_to(root)}" for path, _ in self.files)
         lines.extend(f"update: {edit.path.relative_to(root)}" for edit in self.edits)
+        if self.selector.engine is RuleEngine.OXLINT:
+            lines.extend(f"update: {path}" for path in rule_registration.TYPESCRIPT_INDEXES)
         if self.descriptors is not None:
             lines.append(f"update: {self.descriptors.path.relative_to(root)}")
         lines.extend(
@@ -134,6 +136,8 @@ def plan_new(root: Path, selector: RuleSelector, *, category: str, summary: str)
 def apply(plan: AuthoringPlan, root: Path) -> None:
     edits = (*tuple(rule_registration.FileEdit(path, None, source) for path, source in plan.files), *plan.edits)
     paths = tuple(edit.path for edit in edits)
+    if plan.selector.engine is RuleEngine.OXLINT:
+        paths = (*paths, *(root / path for path in rule_registration.TYPESCRIPT_INDEXES))
     if plan.descriptors is not None:
         paths = (*paths, plan.descriptors.path)
     mutation = transaction.FileTransaction.capture(root, paths, mode=transaction.CaptureMode.EXPLICIT)
@@ -157,6 +161,11 @@ def _write_scaffold(
     for edit in edits:
         transaction.assert_expected(root, edit.path, edit.before)
         mutation.write_text(edit.path, edit.after)
+    if plan.selector.engine is RuleEngine.OXLINT:
+        try:
+            rule_registration.write_typescript_indexes(root)
+        finally:
+            mutation.mark_written(*(root / path for path in rule_registration.TYPESCRIPT_INDEXES))
     if plan.descriptors is not None:
         rendered = python_rule_descriptors.render(root)
         transaction.assert_expected(root, plan.descriptors.path, plan.descriptors.before)

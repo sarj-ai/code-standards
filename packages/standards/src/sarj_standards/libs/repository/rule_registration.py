@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import re
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] -- checkout-local TypeScript index generator.
 
 from sarj_standards.libs.adoption.manifest import as_table, list_field
 from sarj_standards.libs.json_boundary import parse_json
@@ -22,12 +24,10 @@ class FileEdit:
     after: str
 
 
-TYPESCRIPT_DOCS_REGISTRY = Path("packages/typescript/src/docs/index.ts")
+TYPESCRIPT_INDEXES = (Path("packages/typescript/src/index.ts"), Path("packages/typescript/src/docs/index.ts"))
 
 
 def registry_path(root: Path, engine: RuleEngine) -> Path:
-    if engine is RuleEngine.OXLINT:
-        return root / "packages/typescript/src/index.ts"
     if engine is RuleEngine.TEXT:
         return root / "packages/standards/src/sarj_standards/libs/linting/text_rules/_registry.py"
     package = engine.value
@@ -39,23 +39,13 @@ def plan(
 ) -> tuple[FileEdit, ...]:
     slug = str(selector.rule_id)
     name = "".join(part.capitalize() for part in slug.split("-"))
-    registry = registry_path(root, selector.engine)
     if selector.engine is RuleEngine.OXLINT:
-        binding = name[0].lower() + name[1:]
-        documentation = f"{slug.upper().replace('-', '_')}_DOCUMENTATION"
-        return (
-            _typescript_entry(
-                registry, "const RULES = {\n", slug, binding, f'import {binding} from "./rules/{slug}.js";'
-            ),
-            _typescript_entry(
-                root / TYPESCRIPT_DOCS_REGISTRY,
-                "export const RULE_DOCUMENTATION = {\n",
-                slug,
-                documentation,
-                f'import {{ {documentation} }} from "./{slug}.js";',
-            ),
-            _reserve(root, selector, code, reserved),
-        )
+        rules = (root / "packages/typescript/src/rules").glob("*.ts")
+        if (binding := _typescript_binding(slug)) in {_typescript_binding(path.stem) for path in rules}:
+            msg = f"generated rule binding {binding} is already in use; choose a distinct rule ID"
+            raise ValueError(msg)
+        return (_reserve(root, selector, code, reserved),)
+    registry = registry_path(root, selector.engine)
     before = registry.read_bytes() if registry.is_file() else None
     source = (
         before.decode()
@@ -74,17 +64,20 @@ def plan(
     return tuple(edits)
 
 
-def _typescript_entry(registry: Path, anchor: str, slug: str, binding: str, statement: str) -> FileEdit:
-    before = registry.read_bytes() if registry.is_file() else None
-    source = before.decode() if before is not None else f"{anchor}}};\n"
-    if source.count(anchor) != 1:
-        msg = f"{registry.name} must contain one `{anchor.strip()}` object"
-        raise ValueError(msg)
-    if re.search(rf"\b(?:import|const|let|class|function)\s+(?:\{{\s*)?{re.escape(binding)}\b", source):
-        msg = f"generated rule binding {binding} is already in use; choose a distinct rule ID"
-        raise ValueError(msg)
-    rendered = f"{statement}\n" + source.replace(anchor, anchor + f'  "{slug}": {binding},\n', 1)
-    return FileEdit(registry, before, rendered)
+def _typescript_binding(slug: str) -> str:
+    return re.sub(r"-(.)", lambda match: match[1].upper(), slug)
+
+
+def write_typescript_indexes(root: Path) -> None:
+    completed = subprocess.run(  # ruff: ignore[subprocess-without-shell-equals-true] -- resolved executable and fixed generator.
+        (shutil.which("node") or "node", str(root / "packages/typescript/scripts/oxlint/generate-index.ts")),
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if completed.returncode:
+        raise ValueError(completed.stderr.strip() or "TypeScript rule index generation failed")
 
 
 def _native(source: str, module: str, snake: str, name: str) -> str:
