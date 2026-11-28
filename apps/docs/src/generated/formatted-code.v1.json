@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "ab0e887edcb59e620709b3cf0bd9654223ec95dd8d4fdc2be16ba49fe93bb960",
-  "cliSha256": "e05ddcb10173eabc0db9b4658162a96833ff02b8c1dd43411a611788853ee520",
+  "catalogSha256": "c800f4aa82e06f7d0bdb18b3727c300a55f90d8027a666699c30fd44c91a6491",
+  "cliSha256": "ca5cc43a0e65ea84ade1b80d96e5ece841784f2aeebf92e26859e877410b8a22",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -24986,41 +24986,6 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "An unqualified ordinal origin lacks a lower bound"
-        }
-      ],
-      "optionsSchemaSource": null
-    },
-    "python:require-strict-pydantic-model": {
-      "examples": [
-        {
-          "expectedCount": 0,
-          "files": [
-            {
-              "path": "app/models.py",
-              "source": "from pydantic import BaseModel, ConfigDict\n\n\nclass StrictModel(BaseModel, strict=True):\n    pass\n\n\nclass RetryPolicy(StrictModel):\n    model_config = ConfigDict(frozen=True)\n    attempts: int\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/models.py",
-          "id": "inherited-strict-model",
-          "outcome": "accept",
-          "scenarioId": "primary",
-          "title": "An inherited configuration keeps validation strict"
-        },
-        {
-          "expectedCount": 1,
-          "files": [
-            {
-              "path": "app/models.py",
-              "source": "from pydantic import BaseModel\n\n\nclass RetryPolicy(BaseModel):\n    attempts: int\n"
-            }
-          ],
-          "fixedFiles": [],
-          "focusPath": "app/models.py",
-          "id": "lax-model",
-          "outcome": "reject",
-          "scenarioId": "primary",
-          "title": "Default validation can coerce an integer string"
         }
       ],
       "optionsSchemaSource": null
