@@ -43,6 +43,11 @@ _BUILTIN_SOURCES = frozenset({"builtins"})
 _UUID_SOURCES = frozenset({"uuid"})
 _SQLALCHEMY_SOURCES = frozenset({"sqlalchemy.orm"})
 _PYDANTIC_SOURCES = frozenset({"pydantic", "pydantic.fields", "pydantic.v1", "pydantic.v1.fields"})
+_PYDANTIC_VALIDATOR_SOURCES = _PYDANTIC_SOURCES | {"pydantic.types", "pydantic.functional_validators"}
+_PYDANTIC_VALIDATORS = frozenset({"AfterValidator", "BeforeValidator", "PlainValidator", "StringConstraints"})
+_FASTAPI_PARAMETER_SOURCES = frozenset({"fastapi", "fastapi.param_functions", "fastapi.params"})
+_FASTAPI_PARAMETERS = frozenset({"Body", "Cookie", "Depends", "File", "Form", "Header", "Path", "Query", "Security"})
+_VALIDATED_CARRIERS = frozenset({"int", "str"})
 _OPERATIONAL_IDS = frozenset(
     {
         "correlation_id",
@@ -106,11 +111,18 @@ class _IdRole:
 
 
 @dataclass(frozen=True, slots=True)
+class _ValidatedDomain:
+    name: str
+    carrier: str
+
+
+@dataclass(frozen=True, slots=True)
 class _TypeFacts:
     raw_aliases: dict[str, str]
     nominal_aliases: dict[str, str]
     value_roles: dict[str, str] | None = None
     shadowed_names: frozenset[str] = frozenset()
+    validated_roles: dict[str, _ValidatedDomain] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +130,7 @@ class _ScopeFacts:
     sources: dict[str, NominalSource]
     resolved: dict[tuple[str, str | None], _TypeFacts]
     roles: dict[str, str]
+    validated_roles: dict[str, _ValidatedDomain]
 
 
 @dataclass(frozen=True, slots=True)
@@ -189,6 +202,7 @@ class PreferNominalIdTypes(Rule):
             "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs and external/inherited contracts still apply.",
             "Direct implementations of stable same-file abstract contracts also receive the raw-ID advisory, including overrides. Imported, ambiguous, decorated, mutated and multiple-inheritance bases remain excluded. A contract with an existing swappable-ID error owns that diagnostic instead of repeating its implementation as warnings.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
+            "An exact multi-token role with one import-proven validated Annotated alias in the distribution or a declared local dependency receives a warning when its boundary uses the bare carrier. Ambiguous aliases and FastAPI parameter declarations are excluded. Annotated metadata runs only where the framework applies it.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Provider paths and wire models under adapters or integrations are excluded. First-party integration packages use the ordinary boundary checks.",
@@ -467,14 +481,17 @@ class PreferNominalIdTypes(Rule):
         boundaries = _additional_class_boundaries(context, tree, original_facts)
         boundaries.extend(_AdditionalBoundary(node, "nested route") for node in nested_routes)
         returns = _named_returns(tree, nested_routes)
+        validated_slots = _validated_slots(context, tree, nested_routes, original_facts)
         if facts is original_facts and (
             returns
+            or validated_slots
             or any(boundary.wire_aliases or _can_expand(boundary.node, imports, facts) for boundary in boundaries)
         ):
             facts = self._expanded_facts(context, tree, imports)
 
         diagnostics = self._additional_boundary_warnings(context, boundaries, facts, existing)
         diagnostics.extend(self._return_warnings(context, returns, facts))
+        diagnostics.extend(self._validated_role_diagnostics(context, validated_slots, facts, existing + diagnostics))
         return diagnostics
 
     def _additional_boundary_warnings(
@@ -533,6 +550,39 @@ class PreferNominalIdTypes(Rule):
                     self.code,
                     f"`{function.name}` returns a raw carrier for the established `{role.name}` identifier. "
                     "Preserve the nominal ID in its return annotation.",
+                    severity=Severity.WARNING,
+                )
+            )
+        return diagnostics
+
+    def _validated_role_diagnostics(
+        self,
+        context: PythonFileContext,
+        slots: list[_IdRole],
+        facts: _TypeFacts,
+        existing: list[Diagnostic],
+    ) -> list[Diagnostic]:
+        domains = facts.validated_roles or {}
+        occupied = {(finding.line, finding.col) for finding in existing}
+        diagnostics: list[Diagnostic] = []
+        for slot in slots:
+            line, col = slot.annotation.lineno, slot.annotation.col_offset + 1
+            domain = domains.get(slot.name)
+            if (
+                domain is None
+                or slot.carrier.shape != domain.carrier
+                or (line, col) in occupied
+                or context.suppressions.is_suppressed(line, self.code)
+            ):
+                continue
+            diagnostics.append(
+                Diagnostic(
+                    context.path,
+                    line,
+                    col,
+                    self.code,
+                    f"`{slot.name}` has the validated domain `{domain.name}`. Use it on model fields, "
+                    "and wrap a `NewType` if functions must not accept unvalidated values.",
                     severity=Severity.WARNING,
                 )
             )
@@ -621,13 +671,14 @@ class PreferNominalIdTypes(Rule):
                 if _canonical_source(source):
                     _module_facts(module, sources, resolved, (), None)
             roles = _canonical_roles(sources, resolved)
-            cached = _ScopeFacts(sources, resolved, roles)
+            validated_roles = _canonical_validated_roles(sources, roles)
+            cached = _ScopeFacts(sources, resolved, roles, validated_roles)
             self._scope_cache = [*self._scope_cache[-_SCOPE_CACHE_HISTORY:], cached]
         seed = _imported_facts(
             imports, sources, cached.resolved, (), tree, include_annotations=True, node_index=context.node_index
         )
         facts = _type_facts(tree, imports, seed, node_index=context.node_index)
-        return _TypeFacts(facts.raw_aliases, facts.nominal_aliases, cached.roles, facts.shadowed_names)
+        return replace(facts, value_roles=cached.roles, validated_roles=cached.validated_roles)
 
 
 def _explicit_contract(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, context: PythonFileContext) -> bool:
@@ -812,6 +863,75 @@ def _named_returns(tree: ast.Module, nested_routes: list[_Function]) -> list[tup
     ]
 
 
+def _validated_slots(
+    context: PythonFileContext, tree: ast.Module, nested_routes: list[_Function], facts: _TypeFacts
+) -> list[_IdRole]:
+    imports = context.imports
+    primitives = _TypeFacts({}, {}, shadowed_names=facts.shadowed_names)
+    boundaries = _boundary_nodes(tree, imports, facts)
+    boundaries.extend(nested_routes)
+    return [
+        role
+        for node in boundaries
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+        for argument in _parameters(node)
+        if (role := _validated_slot(argument.arg, argument.annotation, imports, primitives)) is not None
+    ] + _validated_field_slots(context, tree, primitives)
+
+
+def _validated_field_slots(context: PythonFileContext, tree: ast.Module, primitives: _TypeFacts) -> list[_IdRole]:
+    imports = context.imports
+    slots: list[_IdRole] = []
+    contracts: DeclaredContracts | None = None
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or _name_parts(node.name) & _OPERATIONAL_NAME_PARTS:
+            continue
+        fields = _validated_class_fields(node, imports, primitives)
+        if not fields:
+            continue
+        if _has_only_marker_bases(node, imports, primitives.shadowed_names):
+            slots.extend(fields)
+            continue
+        if contracts is None:
+            contracts = DeclaredContracts(context)
+        if _validated_model(node, contracts):
+            slots.extend(fields)
+    return slots
+
+
+def _validated_class_fields(node: ast.ClassDef, imports: ImportIndex, primitives: _TypeFacts) -> list[_IdRole]:
+    return [
+        role
+        for name, field in _effective_fields(node).items()
+        if (role := _validated_slot(name, field.annotation, imports, primitives)) is not None
+    ]
+
+
+def _validated_model(node: ast.ClassDef, contracts: DeclaredContracts) -> bool:
+    if contracts.unit is None:
+        return False
+    model = DeclaredClass(contracts.unit, node)
+    return not contracts.inherits(model, SETTINGS_BASES) and contracts.inherits(model, MODEL_BASES | _TYPED_DICT_BASES)
+
+
+def _validated_slot(
+    name: str, annotation: ast.expr | None, imports: ImportIndex, primitives: _TypeFacts
+) -> _IdRole | None:
+    if annotation is None or "_" not in name.strip("_") or name in _OPERATIONAL_IDS:
+        return None
+    expression = _stringized_annotation(annotation) or annotation
+    if any(
+        imports.resolves(node.value, sources=_TYPING_SOURCES, symbol="Annotated")
+        for node in walk_ast(expression)
+        if isinstance(node, ast.Subscript)
+    ):
+        return None
+    carrier = _carrier(expression, imports, primitives)
+    if carrier is None or carrier.shape not in _VALIDATED_CARRIERS:
+        return None
+    return _IdRole(name, annotation, carrier)
+
+
 def _has_only_marker_bases(node: ast.ClassDef, imports: ImportIndex, shadowed_names: frozenset[str]) -> bool:
     for expression in node.bases:
         base = expression.value if isinstance(expression, ast.Subscript) else expression
@@ -857,6 +977,13 @@ def _name_parts(name: str) -> set[str]:
     return set(parts)
 
 
+def _parameters(node: _Function) -> list[ast.arg]:
+    arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+    if node.args.vararg is not None:
+        arguments.append(node.args.vararg)
+    return arguments
+
+
 def _boundary_roles(
     node: ast.AST,
     imports: ImportIndex,
@@ -864,12 +991,9 @@ def _boundary_roles(
 ) -> list[_IdRole]:
     match node:
         case ast.FunctionDef() | ast.AsyncFunctionDef():
-            arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-            if node.args.vararg is not None:
-                arguments.append(node.args.vararg)
             return [
                 role
-                for argument in arguments
+                for argument in _parameters(node)
                 if (role := _role(argument.arg, argument.annotation, imports, facts, allow_bare_id=True)) is not None
             ]
         case ast.ClassDef():
@@ -1547,10 +1671,7 @@ def _boundary_annotations(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.Cla
     if isinstance(node, ast.ClassDef):
         annotations = [member.annotation for member in node.body if isinstance(member, ast.AnnAssign)]
     else:
-        arguments = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
-        if node.args.vararg is not None:
-            arguments.append(node.args.vararg)
-        annotations = [argument.annotation for argument in arguments if argument.annotation is not None]
+        annotations = [argument.annotation for argument in _parameters(node) if argument.annotation is not None]
     return annotations
 
 
@@ -1572,9 +1693,9 @@ def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
     )
 
 
-def _canonical_source(source: NominalSource) -> bool:
+def _canonical_source(source: NominalSource, *, symbol: str = "NewType") -> bool:
     return (
-        "NewType" in symbol_prefilter_source(source.text)
+        symbol in symbol_prefilter_source(source.text)
         and not _is_excluded_path(source.path)
         and {"tests", "test", "fixtures", "fakes"}.isdisjoint(source.path.parts)
         and not source.path.name.startswith("test_")
@@ -1607,10 +1728,89 @@ def _canonical_roles(
                 continue
             if name not in facts.nominal_aliases:
                 continue
-            first = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
-            role = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", first).lower()
-            candidates.setdefault(role, []).append(facts.nominal_aliases[name])
+            candidates.setdefault(_canonical_role_name(name), []).append(facts.nominal_aliases[name])
     return {name: shapes[0] for name, shapes in candidates.items() if len(shapes) == 1}
+
+
+def _canonical_role_name(name: str) -> str:
+    words = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", words).lower()
+
+
+def _canonical_validated_roles(
+    sources: dict[str, NominalSource], nominal_roles: dict[str, str]
+) -> dict[str, _ValidatedDomain]:
+    candidates: dict[str, list[_ValidatedDomain | None]] = {}
+    for source in sources.values():
+        for role, domain in _validated_declarations(source, nominal_roles):
+            candidates.setdefault(role, []).append(domain)
+    return {
+        role: domain for role, options in candidates.items() if len(options) == 1 and (domain := options[0]) is not None
+    }
+
+
+def _validated_declarations(
+    source: NominalSource, nominal_roles: dict[str, str]
+) -> list[tuple[str, _ValidatedDomain | None]]:
+    if not _has_validation_source(source) or source.tree is None:
+        return []
+    bindings = _binding_counts(source.tree, node_index=source.node_index)
+    shadowed = _carrier_shadowed_names(source.tree, source.imports, node_index=source.node_index)
+    declarations: list[tuple[str, _ValidatedDomain | None]] = []
+    for statement in source.tree.body:
+        assignment = _alias_assignment(statement)
+        if assignment is None:
+            continue
+        name = assignment.target
+        role = _canonical_role_name(name)
+        if "_" not in role.strip("_") or role in nominal_roles:
+            continue
+        carrier = _validated_alias_carrier(assignment.value, source.imports, shadowed)
+        if carrier is not None:
+            domain = _ValidatedDomain(name, carrier) if bindings[name] == 1 else None
+            declarations.append((role, domain))
+    return declarations
+
+
+def _has_validation_source(source: NominalSource) -> bool:
+    text = symbol_prefilter_source(source.text)
+    return (
+        "Annotated" in text
+        and "pydantic" in text
+        and ("pattern" in text or any(validator in text for validator in _PYDANTIC_VALIDATORS))
+        and _canonical_source(source, symbol="Annotated")
+    )
+
+
+def _validated_alias_carrier(value: ast.expr, imports: ImportIndex, shadowed: frozenset[str]) -> str | None:
+    if (
+        not isinstance(value, ast.Subscript)
+        or not imports.resolves(value.value, sources=_TYPING_SOURCES, symbol="Annotated")
+        or not isinstance(value.slice, ast.Tuple)
+        or len(value.slice.elts) < _PAIR_ARITY
+        or _expression_is_shadowed(value, shadowed)
+    ):
+        return None
+    base, *metadata = value.slice.elts
+    carrier = _primitive_carrier(base, imports)
+    if carrier is None or carrier not in _VALIDATED_CARRIERS:
+        return None
+    if any(
+        isinstance(item, ast.Call)
+        and imports.resolved_symbol(item.func, sources=_FASTAPI_PARAMETER_SOURCES) in _FASTAPI_PARAMETERS
+        for item in metadata
+    ):
+        return None
+    return carrier if any(_validating_metadata(item, imports) for item in metadata) else None
+
+
+def _validating_metadata(item: ast.expr, imports: ImportIndex) -> bool:
+    if not isinstance(item, ast.Call):
+        return False
+    symbol = imports.resolved_symbol(item.func, sources=_PYDANTIC_VALIDATOR_SOURCES)
+    return symbol in _PYDANTIC_VALIDATORS or (
+        symbol == "Field" and any(keyword.arg == "pattern" and not _is_none(keyword.value) for keyword in item.keywords)
+    )
 
 
 def _pattern_identifier(

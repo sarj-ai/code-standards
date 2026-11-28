@@ -216,6 +216,86 @@ def test_insufficient_return_and_nested_boundary_evidence_stays_silent(example: 
     assert _check(source) == []
 
 
+def test_warns_on_bare_carriers_for_validated_roles_in_models_and_functions() -> None:
+    source = (
+        "from typing import Annotated as Meta\n"
+        "from pydantic import AfterValidator as Normalize, BaseModel, Field\n"
+        "PhoneNumber = Meta[str, Normalize(normalize_phone_number)]\n"
+        "ClientId = Meta[str, Field(pattern='^[a-z]+$')]\n"
+        "class Contact(BaseModel):\n    phone_number: str | None\n"
+        "def is_blocked(phone_number: str) -> bool: ...\n"
+        "def lookup(client_id: str) -> None: ...\n"
+    )
+
+    findings = _check(source)
+
+    assert [(finding.line, finding.severity) for finding in findings] == [
+        (6, Severity.WARNING),
+        (7, Severity.WARNING),
+        (8, Severity.WARNING),
+    ]
+    assert all("`PhoneNumber`" in finding.message for finding in findings[:2])
+    assert "`ClientId`" in findings[2].message
+
+
+def test_finds_a_validated_integer_role_in_the_owning_distribution(tmp_path: Path) -> None:
+    findings = _project_check(
+        tmp_path,
+        "def schedule(retry_count: int | None) -> None: ...\n",
+        "from typing import Annotated\nfrom pydantic.functional_validators import BeforeValidator\n"
+        "RetryCount = Annotated[int, BeforeValidator(validate_count)]\n",
+    )
+
+    [finding] = findings
+    assert finding.severity is Severity.WARNING
+    assert "`RetryCount`" in finding.message
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "def is_blocked(phone_number: PhoneNumber) -> None: ...\n",
+        "def is_blocked(phone_number: int) -> None: ...\n",
+        "def is_blocked(phone_number: Annotated[str, AfterValidator(normalize)]) -> None: ...\n",
+        "def is_blocked(number: str) -> None: ...\n",
+        "def named(name: str) -> None: ...\n",
+        "def lookup(client_id: str) -> None: ...\n",
+        "def update(display_name: str) -> None: ...\n",
+        "def title(user_name: str) -> None: ...\n",
+        "def update(phone_number: str) -> None: ...  # sarj-noqa: SARJ093 — provider contract is raw\n",
+    ],
+)
+def test_any_other_role_alias_ambiguity_or_framework_metadata_abstains(example: str) -> None:
+    source = (
+        "from typing import Annotated\n"
+        "from fastapi import Path, Query\n"
+        "from pydantic import AfterValidator, Field, StringConstraints\n"
+        "PhoneNumber = Annotated[str, AfterValidator(normalize)]\n"
+        "NonEmptyStr = Annotated[str, StringConstraints(min_length=1)]\n"
+        "Name = Annotated[str, StringConstraints(min_length=1)]\n"
+        "ClientId = Annotated[str, Field(pattern='x'), Query()]\n"
+        "DisplayName = Annotated[str, Field(pattern='x'), Path()]\n"
+        "UserName = Annotated[str, Field(pattern='x')]\n"
+        "UserName = Annotated[str, AfterValidator(normalize)]\n" + example
+    )
+    assert _check(source) == []
+
+
+def test_duplicate_validated_aliases_across_modules_are_ambiguous(tmp_path: Path) -> None:
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "app"\nversion = "0.1.0"\n')
+    definitions = (
+        "from typing import Annotated\nfrom pydantic import StringConstraints\n"
+        "StringUUID = Annotated[str, StringConstraints(min_length=1)]\n"
+    )
+    (tmp_path / "first.py").write_text(definitions)
+    (tmp_path / "second.py").write_text(definitions)
+    path = tmp_path / "api.py"
+    source = "def read(string_uuid: str) -> None: ...\n"
+    path.write_text(source)
+
+    assert PreferNominalIdTypes().check(path, source) == []
+
+
 def test_exact_suppression_is_recognized() -> None:
     source = (
         "def bridge(\n"
