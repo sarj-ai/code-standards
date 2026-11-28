@@ -166,7 +166,8 @@ class PreferNominalIdTypes(Rule):
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
-            "Generated code, migrations, external adapters, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
+            "Provider paths and wire models under adapters or integrations are excluded. First-party integration packages use the ordinary boundary checks.",
+            "Generated code, migrations, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
             "Canonical object, ABC, Protocol and Generic bases do not hide fields or methods declared by the class. Mutated, escaped or rebound providers remain unknown. Other explicit bases stay excluded without requiring an override decorator; their inherited API may prescribe raw carriers. Local custom bases do not prove runtime member ownership remains closed.",
         ),
         examples=(
@@ -1101,7 +1102,6 @@ def _is_external_adapter_path(path: Path) -> bool:
     return (
         "providers" in parts
         or ("adapters" in parts and ("models" in parts or path.name.lower() == "models.py"))
-        or "integration" in parts
         or ("integrations" in parts and ("models" in parts or path.name.lower() == "models.py"))
     )
 
