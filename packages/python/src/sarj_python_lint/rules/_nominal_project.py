@@ -16,7 +16,7 @@ from sarj_python_lint._source import read_python_source
 from sarj_python_lint.rules._ast_index import NodeIndex, import_statements
 from sarj_python_lint.rules._first_party import distribution_root, has_distribution_marker
 from sarj_python_lint.rules._imports import ImportIndex
-from sarj_python_lint.rules._literal_domains import LiteralDomainIndex
+from sarj_python_lint.rules._literal_domains import LiteralDomainIndex, StringDomain, string_domains
 from sarj_python_lint.rules._paths import GeneratedPathFacts
 from sarj_python_lint.rules._project_index import ProjectIndexSet, parsed_tree
 
@@ -46,6 +46,16 @@ class NominalSource:
         if "NewType" not in self.text or (tree := self._parse_tree()) is None:
             return frozenset()
         return nominal_constructor_names(tree)
+
+    @cached_property
+    def closed_string_domains(self) -> tuple[StringDomain, ...]:
+        if not ("Literal" in self.text or ("enum" in self.text and "Enum" in self.text)):
+            return ()
+        tree = self.tree
+        if tree is None:
+            return ()
+        imports = _without_namespace_writes(ImportIndex.from_tree(tree, module_scope_only=True), ast.walk(tree))
+        return string_domains(tree, imports, self.path)
 
     @cached_property
     def node_index(self) -> NodeIndex | None:
@@ -79,16 +89,19 @@ class NominalSource:
         node_index = self.node_index
         if tree is None or node_index is None:
             return ImportIndex(MappingProxyType({}), frozenset())
-        imports = ImportIndex.from_tree(tree)
-        mutated = {
-            ast.unparse(node).partition(".")[0]
-            for node in node_index.query((ast.Attribute,))
-            if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
-        }
-        return ImportIndex(
-            MappingProxyType({name: target for name, target in imports.bindings.items() if name not in mutated}),
-            imports.shadowed_names | mutated,
-        )
+        return _without_namespace_writes(ImportIndex.from_tree(tree), node_index.query((ast.Attribute,)))
+
+
+def _without_namespace_writes(imports: ImportIndex, nodes: Iterable[ast.AST]) -> ImportIndex:
+    mutated = {
+        ast.unparse(node).partition(".")[0]
+        for node in nodes
+        if isinstance(node, ast.Attribute) and isinstance(node.ctx, (ast.Store, ast.Del))
+    }
+    return ImportIndex(
+        MappingProxyType({name: target for name, target in imports.bindings.items() if name not in mutated}),
+        imports.shadowed_names | mutated,
+    )
 
 
 def nominal_constructor_names(tree: ast.Module) -> frozenset[str]:
@@ -157,6 +170,14 @@ class _DistributionSources:
         return {module: source for module, source in self._entries if self.get(module) is source}
 
     @cached_property
+    def declaration_sources(self) -> tuple[NominalSource, ...]:
+        return tuple(
+            source
+            for _, source in self._entries
+            if self._include_generated or not self._generated_paths.is_generated(source.path, source.text)
+        )
+
+    @cached_property
     def literal_domains(self) -> LiteralDomainIndex:
         return LiteralDomainIndex.build(self.sources)
 
@@ -195,6 +216,12 @@ class NominalScope:
             for distribution in self._distributions
             for module, source in distribution.sources.items()
             if self.get(module) is source
+        }
+
+    @cached_property
+    def declaration_sources(self) -> dict[Path, NominalSource]:
+        return {
+            source.path: source for distribution in self._distributions for source in distribution.declaration_sources
         }
 
 
