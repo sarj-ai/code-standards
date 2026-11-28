@@ -264,7 +264,6 @@
       "require-pydantic-for-mapping-shape",
       "require-pydantic-for-structured-payload",
       "require-pydantic-ordinal-lower-bound",
-      "require-strict-pydantic-model",
       "require-total-enum-mapping",
       "restated-test-docstring",
       "server-proxied-file-upload",
@@ -789,7 +788,6 @@
       "SARJ606",
       "SARJ607",
       "SARJ608",
-      "SARJ609",
       "SARJ610",
       "SARJ611",
       "SARJ612",
@@ -1369,6 +1367,13 @@
       "note": "Unreleased layout advisory withdrawn; stacked pytest axes remain supported. Remove SARJ581 selections from unpublished candidates; there is no replacement."
     },
     {
+      "id": "SARJ609",
+      "kind": "code",
+      "status": "removed",
+      "replacement": null,
+      "note": "Strict validation is a model-specific choice; remove this rule selector or suppression and configure Pydantic strictness where required."
+    },
+    {
       "id": "add-constraint-not-valid",
       "kind": "sql",
       "status": "renamed",
@@ -1899,6 +1904,13 @@
       "status": "removed",
       "replacement": null,
       "note": "Removed the per-migration timeout requirement; configure execution timeouts at the migration runner or database session boundary when needed."
+    },
+    {
+      "id": "require-strict-pydantic-model",
+      "kind": "python",
+      "status": "removed",
+      "replacement": null,
+      "note": "Strict validation is a model-specific choice; remove this rule selector or suppression and configure Pydantic strictness where required."
     },
     {
       "id": "require-typed-http-test-response",
