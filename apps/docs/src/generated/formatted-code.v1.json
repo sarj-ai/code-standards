@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "c46e1400deebae008305369430c8b492cbb02de76e2dcb521b48dd0f7719b3d7",
-  "cliSha256": "0fee382f03f390821af0514bae7fd0e73ea7948b7c9c76600707e992c95280ea",
+  "catalogSha256": "cd64eb16d2407b178568aecba5dfc27aa1233c8346dbfa2a4fed5ccb99d63180",
+  "cliSha256": "d1bdd83e0a837c477031185721946bc62642760435dae6c9c2b524e38fe2fa3f",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -15826,6 +15826,36 @@
           "outcome": "accept",
           "scenarioId": "settings-validation-boundary",
           "title": "Construct the validated settings object at startup"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Job(BaseModel):\n    name: str\n\n\njob = Job.model_construct(**row)\nupdated = Job(name=\"draft\").model_copy(update=changes)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "unchecked-mapping-payloads",
+          "outcome": "reject",
+          "scenarioId": "mapping-validation-boundary",
+          "title": "Unpacked construction and opaque copy updates bypass validation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Job(BaseModel):\n    name: str\n\n\njob = Job.model_validate(row)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "validated-mapping-payload",
+          "outcome": "accept",
+          "scenarioId": "mapping-validation-boundary",
+          "title": "Validate the complete mapping before storing field values"
         }
       ],
       "optionsSchemaSource": null
