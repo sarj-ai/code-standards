@@ -16,6 +16,7 @@
 
 
 
+import { execFileSync } from "node:child_process";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -120,6 +121,11 @@ describe("every rule module is a claim", () => {
         expect(url.href).toBe(exampleUrl);
       }
     }
+  });
+
+  it("is listed in the indexes exactly as scripts/oxlint/generate-index.ts renders them", () => {
+    const generator = resolve(HERE, "../scripts/oxlint/generate-index.ts");
+    expect(execFileSync(process.execPath, [generator, "--check"], { encoding: "utf8" })).toContain(" rules");
   });
 });
 

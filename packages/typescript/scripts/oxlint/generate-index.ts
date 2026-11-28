@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Write src/index.ts from the rule files in src/rules/ and src/docs/index.ts
 // from the documentation files in src/docs/ (files starting with "_" are
-// private helpers). Run after adding or removing a rule.
+// private helpers). Run after adding or removing a rule; --check fails if
+// either file is stale instead of writing it.
 
-import { readdir, writeFile } from "node:fs/promises";
+import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { parseArgs } from "node:util";
 
 import { PACKAGE_DIR } from "./lib.ts";
+
+const { values } = parseArgs({ options: { check: { type: "boolean", default: false } } });
 
 await main();
 
@@ -18,7 +22,7 @@ async function main(): Promise<void> {
   if (undocumented.length > 0 || orphaned.length > 0) {
     throw new Error(`every rule needs src/docs/<rule>.ts and every docs module a rule: undocumented [${undocumented.join(", ")}], orphaned [${orphaned.join(", ")}]`);
   }
-  await writeFile(join(PACKAGE_DIR, "src/index.ts"), [
+  await emit("src/index.ts", [
     "/**",
     " * @fileoverview index — the @sarj rules written for Oxlint's plugin API.",
     " *",
@@ -42,8 +46,8 @@ async function main(): Promise<void> {
     "",
     "export default PLUGIN;",
     "",
-  ].join("\n"));
-  await writeFile(join(PACKAGE_DIR, "src/docs/index.ts"), [
+  ]);
+  await emit("src/docs/index.ts", [
     "/**",
     " * @fileoverview docs — every rule's documentation and executable examples, by rule name.",
     " *",
@@ -56,8 +60,18 @@ async function main(): Promise<void> {
     ...docs.map((doc) => `  ${JSON.stringify(doc)}: ${constant(doc)},`),
     "} as const;",
     "",
-  ].join("\n"));
+  ]);
   console.log(`${String(rules.length)} rules`);
+}
+
+async function emit(file: string, lines: readonly string[]): Promise<void> {
+  const path = join(PACKAGE_DIR, file);
+  const text = lines.join("\n");
+  if (!values.check) {
+    await writeFile(path, text);
+  } else if ((await readFile(path, "utf8")) !== text) {
+    throw new Error(`packages/typescript/${file} is stale; run: node packages/typescript/scripts/oxlint/generate-index.ts`);
+  }
 }
 
 async function modules(directory: string): Promise<string[]> {
