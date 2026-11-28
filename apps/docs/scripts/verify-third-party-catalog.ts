@@ -35,10 +35,10 @@ const { tokens } = parseArgs({
 const first = tokens.at(0);
 const mode = first?.kind === "option" && first.value === undefined ? first.rawName : undefined;
 const engineeringDestinations = new Set([
-  "/",
-  "/projects/lra/ui/v1/docs.css",
-  "/projects/lra/ui/v1/navigation.js",
-  "/projects/lra/ui/v1/sarj-logo.svg",
+  "/engineering/",
+  "/engineering/projects/lra/ui/v1/docs.css",
+  "/engineering/projects/lra/ui/v1/navigation.js",
+  "/engineering/projects/lra/ui/v1/sarj-logo.svg",
 ]);
 
 assert.ok(
@@ -225,9 +225,9 @@ async function verifyDist(ruleCounts: Map<string, number>) {
   assert.deepEqual((await readdir(assetRoot)).sort(), [
     "_headers",
     "_redirects",
-    "projects",
+    "engineering",
   ]);
-  assert.deepEqual(await readdir(resolve(assetRoot, "projects")), [
+  assert.deepEqual(await readdir(resolve(assetRoot, "engineering", "projects")), [
     "code-standards",
   ]);
   const headers = await readFile(resolve(assetRoot, "_headers"), "utf8");
