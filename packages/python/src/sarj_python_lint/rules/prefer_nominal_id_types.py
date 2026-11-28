@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
+from collections.abc import Iterable
 from dataclasses import dataclass, replace
+from functools import cached_property
+from itertools import chain
 from pathlib import PurePosixPath
 import re
 from typing import TYPE_CHECKING, ClassVar, Literal, TypeGuard, final, override
@@ -26,7 +29,9 @@ from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_as
 from sarj_python_lint.rules._declared_contracts import MODEL_BASES, SETTINGS_BASES, DeclaredClass, DeclaredContracts
 from sarj_python_lint.rules._imports import ABC_SOURCES
 from sarj_python_lint.rules._inherited_contract import inherited_contract
+from sarj_python_lint.rules._literal_domains import StringDomain
 from sarj_python_lint.rules._nominal_project import NominalSource
+from sarj_python_lint.rules._paths import is_test_path, is_test_support_path
 
 
 if TYPE_CHECKING:
@@ -123,14 +128,20 @@ class _TypeFacts:
     value_roles: dict[str, str] | None = None
     shadowed_names: frozenset[str] = frozenset()
     validated_roles: dict[str, _ValidatedDomain] | None = None
+    string_roles: dict[str, list[StringDomain]] | None = None
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True)
 class _ScopeFacts:
     sources: dict[str, NominalSource]
     resolved: dict[tuple[str, str | None], _TypeFacts]
     roles: dict[str, str]
     validated_roles: dict[str, _ValidatedDomain]
+    string_declarations: Iterable[NominalSource]
+
+    @cached_property
+    def string_roles(self) -> dict[str, list[StringDomain]]:
+        return _canonical_string_roles(self.string_declarations)
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,6 +214,7 @@ class PreferNominalIdTypes(Rule):
             "Direct implementations of stable same-file abstract contracts also receive the raw-ID advisory, including overrides. Imported, ambiguous, decorated, mutated and multiple-inheritance bases remain excluded. A contract with an existing swappable-ID error owns that diagnostic instead of repeating its implementation as warnings.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "An exact multi-token role with one import-proven validated Annotated alias in the distribution or a declared local dependency receives a warning when its boundary uses the bare carrier. Ambiguous aliases and FastAPI parameter declarations are excluded. Annotated metadata runs only where the framework applies it.",
+            "An exact multi-token parameter or class field annotated with a bare string receives a warning when the owning distribution or a declared local dependency defines one matching StrEnum, str-mixed Enum or string Literal alias. Private declarations apply only in their own module. Duplicate declarations, wire-aliased fields, test code and defaults outside the known domain are excluded.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Provider paths and wire models under adapters or integrations are excluded. First-party integration packages use the ordinary boundary checks.",
@@ -236,6 +248,42 @@ class PreferNominalIdTypes(Rule):
                     ExampleFile.python(
                         "app/service.py",
                         "from typing import Literal\nEnvironment = Literal['sandbox', 'live']\ndef save(environment: Environment) -> None: ...\ndef run(value: Environment) -> None:\n    save(value)\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=0,
+                public=True,
+            ),
+            RuleExample(
+                example_id="established-string-domain",
+                scenario="canonical-role",
+                title="A matching string role preserves its declared domain",
+                outcome=ExampleOutcome.MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from enum import StrEnum\n"
+                        "class DeliveryMode(StrEnum):\n"
+                        "    IMMEDIATE = 'immediate'\n"
+                        "    SCHEDULED = 'scheduled'\n"
+                        "def dispatch(delivery_mode: str | None) -> None: ...\n",
+                    ),
+                ),
+                focus_path=PurePosixPath("app/service.py"),
+                expected_count=1,
+                public=True,
+            ),
+            RuleExample(
+                example_id="preserved-string-domain",
+                scenario="canonical-role",
+                title="A typed parameter keeps the declared string domain",
+                outcome=ExampleOutcome.NO_MATCH,
+                files=(
+                    ExampleFile.python(
+                        "app/service.py",
+                        "from typing import Literal\n"
+                        "type DeliveryMode = Literal['immediate', 'scheduled']\n"
+                        "def dispatch(delivery_mode: DeliveryMode | None) -> None: ...\n",
                     ),
                 ),
                 focus_path=PurePosixPath("app/service.py"),
@@ -491,7 +539,7 @@ class PreferNominalIdTypes(Rule):
 
         diagnostics = self._additional_boundary_warnings(context, boundaries, facts, existing)
         diagnostics.extend(self._return_warnings(context, returns, facts))
-        diagnostics.extend(self._validated_role_diagnostics(context, validated_slots, facts, existing + diagnostics))
+        diagnostics.extend(self._canonical_role_diagnostics(context, validated_slots, facts, existing + diagnostics))
         return diagnostics
 
     def _additional_boundary_warnings(
@@ -555,7 +603,7 @@ class PreferNominalIdTypes(Rule):
             )
         return diagnostics
 
-    def _validated_role_diagnostics(
+    def _canonical_role_diagnostics(
         self,
         context: PythonFileContext,
         slots: list[_IdRole],
@@ -563,17 +611,25 @@ class PreferNominalIdTypes(Rule):
         existing: list[Diagnostic],
     ) -> list[Diagnostic]:
         domains = facts.validated_roles or {}
+        string_roles = facts.string_roles or {}
+        focus_path = context.path.resolve() if string_roles else context.path
         occupied = {(finding.line, finding.col) for finding in existing}
         diagnostics: list[Diagnostic] = []
         for slot in slots:
             line, col = slot.annotation.lineno, slot.annotation.col_offset + 1
+            if (line, col) in occupied or context.suppressions.is_suppressed(line, self.code):
+                continue
             domain = domains.get(slot.name)
-            if (
-                domain is None
-                or slot.carrier.shape != domain.carrier
-                or (line, col) in occupied
-                or context.suppressions.is_suppressed(line, self.code)
-            ):
+            if domain is not None and slot.carrier.shape == domain.carrier:
+                message = (
+                    f"`{slot.name}` has the validated domain `{domain.name}`. Use it on model fields, "
+                    "and wrap a `NewType` if functions must not accept unvalidated values."
+                )
+            elif slot.carrier.shape == "str":
+                message = _closed_string_message(slot, string_roles.get(slot.name, []), focus_path, context)
+                if message is None:
+                    continue
+            else:
                 continue
             diagnostics.append(
                 Diagnostic(
@@ -581,8 +637,7 @@ class PreferNominalIdTypes(Rule):
                     line,
                     col,
                     self.code,
-                    f"`{slot.name}` has the validated domain `{domain.name}`. Use it on model fields, "
-                    "and wrap a `NewType` if functions must not accept unvalidated values.",
+                    message,
                     severity=Severity.WARNING,
                 )
             )
@@ -646,39 +701,34 @@ class PreferNominalIdTypes(Rule):
         ]
 
     def _expanded_facts(self, context: PythonFileContext, tree: ast.Module, imports: ImportIndex) -> _TypeFacts:
-        sources = (
-            context.session.nominal_project.sources(
+        scope = (
+            context.session.nominal_project.scope(
                 context.path, context.session.first_party, project=context.session.project
             )
             if context.path.is_file()
-            else {}
+            else None
         )
+        sources = scope.sources if scope is not None else {}
+        declarations = scope.declaration_sources if scope is not None else {}
+        current = declarations.get(context.path.resolve()) if declarations else None
+        if current is not None and current.text != context.source:
+            updated = NominalSource(current.path, context.source, tree)
+            sources = {module: updated if source is current else source for module, source in sources.items()}
+            declarations = {**declarations, current.path: updated}
         if not sources:
-            sources = {"__local__": NominalSource(context.path, context.source)}
-        else:
-            focus_path = context.path.resolve()
-            changed = {
-                module: NominalSource(source.path, context.source)
-                for module, source in sources.items()
-                if source.path == focus_path and source.text != context.source
-            }
-            if changed:
-                sources = {**sources, **changed}
+            sources = {"__local__": NominalSource(context.path, context.source, tree)}
         cached = next((entry for entry in self._scope_cache if entry.sources is sources), None)
         if cached is None:
-            resolved: dict[tuple[str, str | None], _TypeFacts] = {}
-            for module, source in sources.items():
-                if _canonical_source(source):
-                    _module_facts(module, sources, resolved, (), None)
-            roles = _canonical_roles(sources, resolved)
-            validated_roles = _canonical_validated_roles(sources, roles)
-            cached = _ScopeFacts(sources, resolved, roles, validated_roles)
+            cached = _scope_facts(sources, (declarations or sources).values())
             self._scope_cache = [*self._scope_cache[-_SCOPE_CACHE_HISTORY:], cached]
         seed = _imported_facts(
             imports, sources, cached.resolved, (), tree, include_annotations=True, node_index=context.node_index
         )
         facts = _type_facts(tree, imports, seed, node_index=context.node_index)
-        return replace(facts, value_roles=cached.roles, validated_roles=cached.validated_roles)
+        string_roles = None if is_test_path(context.path) or is_test_support_path(context.path) else cached.string_roles
+        return replace(
+            facts, value_roles=cached.roles, validated_roles=cached.validated_roles, string_roles=string_roles
+        )
 
 
 def _explicit_contract(node: ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef, context: PythonFileContext) -> bool:
@@ -1125,6 +1175,52 @@ def _is_pydantic_wire_alias_call(value: ast.expr | None, imports: ImportIndex) -
         and imports.resolves(value.func, sources=_PYDANTIC_SOURCES, symbol="Field")
         and any(keyword.arg in {"alias", "serialization_alias", "validation_alias"} for keyword in value.keywords)
     )
+
+
+def _closed_string_message(
+    slot: _IdRole, candidates: list[StringDomain], focus_path: Path, context: PythonFileContext
+) -> str | None:
+    visible = [
+        domain for domain in candidates if not domain.name.startswith("_") or domain.path in {context.path, focus_path}
+    ]
+    if len(visible) != 1 or visible[0].rebound:
+        return None
+    domain = visible[0]
+    owner = context.parents.get(slot.annotation)
+    if isinstance(owner, ast.AnnAssign) and _has_pydantic_wire_alias(owner, context.imports):
+        return None
+    default = _slot_default(owner, context)
+    if (
+        domain.members is not None
+        and isinstance(default, ast.Constant)
+        and isinstance(default.value, str)
+        and default.value not in domain.members
+    ):
+        return None
+    return (
+        f"`{slot.name}` has the established string domain `{domain.name}`. "
+        "Preserve that type and its optionality at this boundary."
+    )
+
+
+def _slot_default(owner: ast.AST | None, context: PythonFileContext) -> ast.expr | None:
+    match owner:
+        case ast.AnnAssign(value=ast.Call(func=func, args=arguments, keywords=keywords)) if context.imports.resolves(
+            func, sources=_PYDANTIC_SOURCES, symbol="Field"
+        ):
+            return arguments[0] if arguments else next((item.value for item in keywords if item.arg == "default"), None)
+        case ast.AnnAssign(value=value):
+            return value
+        case ast.arg() if isinstance(params := context.parents.get(owner), ast.arguments):
+            positional = [*params.posonlyargs, *params.args]
+            first_default = len(positional) - len(params.defaults)
+            defaults = chain(
+                zip(positional[first_default:], params.defaults, strict=True),
+                zip(params.kwonlyargs, params.kw_defaults, strict=True),
+            )
+            return next((default for parameter, default in defaults if parameter is owner), None)
+        case _:
+            return None
 
 
 def _type_facts(
@@ -1693,6 +1789,15 @@ def _boundary_message(roles: list[_IdRole], *, established: bool) -> str:
     )
 
 
+def _scope_facts(sources: dict[str, NominalSource], declarations: Iterable[NominalSource]) -> _ScopeFacts:
+    resolved: dict[tuple[str, str | None], _TypeFacts] = {}
+    for module, source in sources.items():
+        if _canonical_source(source):
+            _module_facts(module, sources, resolved, (), None)
+    roles = _canonical_roles(sources, resolved)
+    return _ScopeFacts(sources, resolved, roles, _canonical_validated_roles(sources, roles), declarations)
+
+
 def _canonical_source(source: NominalSource, *, symbol: str = "NewType") -> bool:
     return (
         symbol in symbol_prefilter_source(source.text)
@@ -1735,6 +1840,18 @@ def _canonical_roles(
 def _canonical_role_name(name: str) -> str:
     words = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
     return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", words).lower()
+
+
+def _canonical_string_roles(sources: Iterable[NominalSource]) -> dict[str, list[StringDomain]]:
+    candidates: dict[str, list[StringDomain]] = {}
+    for source in sources:
+        if _is_excluded_path(source.path) or is_test_path(source.path) or is_test_support_path(source.path):
+            continue
+        for domain in source.closed_string_domains:
+            role = _canonical_role_name(domain.name.lstrip("_"))
+            if "_" in role.strip("_"):
+                candidates.setdefault(role, []).append(domain)
+    return candidates
 
 
 def _canonical_validated_roles(

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "218c3c60046b6521d4f9cfbd2935145888dc8f586dec33fcac4b3fbac7aebba0",
-  "cliSha256": "3d52eb2f8cfafaa9f69bb59d72085675f15c03d0f967a898a01015087ddc3219",
+  "catalogSha256": "ab0e887edcb59e620709b3cf0bd9654223ec95dd8d4fdc2be16ba49fe93bb960",
+  "cliSha256": "e05ddcb10173eabc0db9b4658162a96833ff02b8c1dd43411a611788853ee520",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -21259,6 +21259,21 @@
           "title": "The boundary uses the existing nominal ID"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from enum import StrEnum\n\n\nclass DeliveryMode(StrEnum):\n    IMMEDIATE = \"immediate\"\n    SCHEDULED = \"scheduled\"\n\n\ndef dispatch(delivery_mode: str | None) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "established-string-domain",
+          "outcome": "reject",
+          "scenarioId": "canonical-role",
+          "title": "A matching string role preserves its declared domain"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -21317,6 +21332,21 @@
           "outcome": "accept",
           "scenarioId": "domain-flow",
           "title": "A typed caller preserves the closed domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Literal\n\ntype DeliveryMode = Literal[\"immediate\", \"scheduled\"]\n\n\ndef dispatch(delivery_mode: DeliveryMode | None) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "preserved-string-domain",
+          "outcome": "accept",
+          "scenarioId": "canonical-role",
+          "title": "A typed parameter keeps the declared string domain"
         },
         {
           "expectedCount": 1,
