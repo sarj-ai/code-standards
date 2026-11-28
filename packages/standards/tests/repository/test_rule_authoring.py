@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import importlib
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
+import shutil
 import sys
 from types import ModuleType
-from typing import TYPE_CHECKING
 
 import pytest
 from sarj_python_lint.__main__ import analyze
@@ -23,8 +23,7 @@ from sarj_standards.libs.repository import rule_authoring, rule_catalog_artifact
 from sarj_standards.libs.rules import RuleSelector
 
 
-if TYPE_CHECKING:
-    from pathlib import Path
+_GENERATOR = "packages/typescript/scripts/oxlint"
 
 
 @dataclass(slots=True)
@@ -139,6 +138,7 @@ def test_oxlint_scaffold_writes_a_create_once_rule_its_documentation_and_tests(t
 
 
 def test_oxlint_registration_adds_the_rule_and_its_documentation(tmp_path: Path) -> None:
+    shutil.copytree(Path(__file__).resolve().parents[4] / _GENERATOR, tmp_path / _GENERATOR)
     plan = rule_authoring.plan_new(
         tmp_path, RuleSelector.parse("oxlint:prefer-explicit-clock"), category="testing", summary="Use a clock."
     )
@@ -440,6 +440,7 @@ def test_generated_native_test_helper_uses_the_public_analyzer() -> None:
 
 @pytest.mark.parametrize("engine", ["python", "oxlint"])
 def test_registration_rejects_colliding_generated_identifiers(tmp_path: Path, engine: str) -> None:
+    shutil.copytree(Path(__file__).resolve().parents[4] / _GENERATOR, tmp_path / _GENERATOR)
     first = rule_authoring.plan_new(
         tmp_path, RuleSelector.parse(f"{engine}:foo1"), category="correctness", summary="First detector."
     )
