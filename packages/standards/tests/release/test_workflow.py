@@ -377,6 +377,34 @@ def test_native_plugin_attestation_fetch_uses_the_workflow_token(workflow: str, 
     assert environment["GITHUB_TOKEN"] == "${{ github.token }}"
 
 
+def test_native_verify_phases_run_every_make_verify_target_once() -> None:
+    recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8").split("\nverify:\n")[1].split("\n\n")[0]
+    tail = (REPO_ROOT / ".github/scripts/make-verify-tail.sh").read_text(encoding="utf-8")
+    strategy = _job("native-verify.yml", "verify")["strategy"]
+    assert is_object_mapping(strategy)
+    matrix = strategy["matrix"]
+    assert is_object_mapping(matrix)
+    phases = matrix["include"]
+    assert is_object_list(phases)
+    commands = "\n".join(str(phase["run"]) for phase in phases if is_object_mapping(phase))
+
+    assert sorted(_make_targets(commands)) == sorted(
+        _make_targets(recipe.replace("$(MAKE)", "make")) + _make_targets(tail.replace('"$@"', "make"))
+    )
+    assert _job("native-verify.yml", "complete")["needs"] == "verify"
+    assert _run("native-verify.yml", "complete", "Require every phase") == 'test "$RESULT" = success'
+
+
+def _make_targets(text: str) -> list[str]:
+    lines = [line.strip() for line in text.splitlines()]
+    return [
+        word
+        for line in lines
+        for word in line.partition("make --no-print-directory ")[2].split()
+        if not word.startswith("-") and word != '"$target"'
+    ] + [line.removeprefix("target=") for line in lines if line.startswith("target=verify-")]
+
+
 def test_wheel_integration_installs_locked_documentation_formatters_before_testing() -> None:
     names = [step.get("name") for step in _steps("release.yml", "build-standards")]
     assert names.index("Install locked documentation formatters") < names.index("Test against the built wheel")
