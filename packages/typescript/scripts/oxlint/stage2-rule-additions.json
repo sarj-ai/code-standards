@@ -11,6 +11,7 @@
     "@sarj/no-shared-mutable-zod-default": { "level": "warn" },
     "@sarj/prefer-monotonic-for-elapsed-time": { "level": "warn" },
     "@sarj/prefer-typed-cli": { "level": "warn" },
+    "@sarj/prefer-nominal-id-members": { "level": "warn" },
     "@sarj/prefer-total-union-record": { "level": "warn" },
     "@sarj/no-flake-masking": { "level": "error" },
     "@sarj/no-unsignaled-poll": { "level": "warn" },

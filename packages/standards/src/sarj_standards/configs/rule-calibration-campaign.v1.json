@@ -55,6 +55,14 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/typescript/prefer-nominal-id-members",
+      "family": "typescript",
+      "ruleId": "prefer-nominal-id-members",
+      "state": "pending",
+      "evidence": "Oxlint scanned 9,206 files from immutable snapshots, reported 575 member warnings including 31 test findings, and retained all 179 callable diagnostics at their original locations. Review of 24 hash-ranked production findings found 15 actionable suggestions, seven same-domain or raw-boundary cases, and two ambiguous cases. In three alternating runs on 240 files, median first runs were 1.48 and 1.91 seconds and median repeat runs were 1.76 and 2.01 seconds. Median peak RSS ranged from 110,488 to 120,460 KiB across the four groups.",
+      "outcome": "Ship at WARNING. Distinct brands let TypeScript reject swaps between primitive identifier roles. Review same-domain role pairs and third-party wire contracts before considering a higher severity."
+    },
+    {
       "task": "rule-audit/typescript/prefer-total-union-record",
       "family": "typescript",
       "ruleId": "prefer-total-union-record",

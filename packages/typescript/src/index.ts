@@ -140,6 +140,7 @@ import preferNativeFetchInServerActions from "./rules/prefer-native-fetch-in-ser
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNodeCryptoHash from "./rules/prefer-node-crypto-hash.js";
 import preferNodeFsPromises from "./rules/prefer-node-fs-promises.js";
+import preferNominalIdMembers from "./rules/prefer-nominal-id-members.js";
 import preferNominalIdTypes from "./rules/prefer-nominal-id-types.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferNullishFilterPredicate from "./rules/prefer-nullish-filter-predicate.js";
@@ -319,6 +320,7 @@ const RULES = {
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,
   "prefer-node-fs-promises": preferNodeFsPromises,
+  "prefer-nominal-id-members": preferNominalIdMembers,
   "prefer-nominal-id-types": preferNominalIdTypes,
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-nullish-filter-predicate": preferNullishFilterPredicate,

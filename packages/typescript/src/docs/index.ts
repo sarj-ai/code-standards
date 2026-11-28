@@ -136,6 +136,7 @@ import { PREFER_NATIVE_FETCH_IN_SERVER_ACTIONS_DOCUMENTATION } from "./prefer-na
 import { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "./prefer-native-random-uuid.js";
 import { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "./prefer-node-crypto-hash.js";
 import { PREFER_NODE_FS_PROMISES_DOCUMENTATION } from "./prefer-node-fs-promises.js";
+import { PREFER_NOMINAL_ID_MEMBERS_DOCUMENTATION } from "./prefer-nominal-id-members.js";
 import { PREFER_NOMINAL_ID_TYPES_DOCUMENTATION } from "./prefer-nominal-id-types.js";
 import { PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION } from "./prefer-non-nullable-collection.js";
 import { PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION } from "./prefer-nullish-filter-predicate.js";
@@ -315,6 +316,7 @@ export const RULE_DOCUMENTATION = {
   "prefer-native-random-uuid": PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
   "prefer-node-crypto-hash": PREFER_NODE_CRYPTO_HASH_DOCUMENTATION,
   "prefer-node-fs-promises": PREFER_NODE_FS_PROMISES_DOCUMENTATION,
+  "prefer-nominal-id-members": PREFER_NOMINAL_ID_MEMBERS_DOCUMENTATION,
   "prefer-nominal-id-types": PREFER_NOMINAL_ID_TYPES_DOCUMENTATION,
   "prefer-non-nullable-collection": PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION,
   "prefer-nullish-filter-predicate": PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
