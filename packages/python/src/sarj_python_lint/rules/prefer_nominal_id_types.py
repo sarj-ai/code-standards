@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import ast
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import PurePosixPath
 import re
-from typing import TYPE_CHECKING, ClassVar, TypeGuard, final, override
+from typing import TYPE_CHECKING, ClassVar, Literal, TypeGuard, final, override
 
 from sarj_python_lint._source import symbol_prefilter_source
 from sarj_python_lint.rule_base import (
@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._annotation_origins import AnnotationOrigins
 from sarj_python_lint.rules._annotation_semantics import bit_or_members as _flatten_union
 from sarj_python_lint.rules._ast_index import nodes, parent_map, walk as walk_ast
+from sarj_python_lint.rules._declared_contracts import MODEL_BASES, SETTINGS_BASES, DeclaredClass, DeclaredContracts
 from sarj_python_lint.rules._imports import ABC_SOURCES
 from sarj_python_lint.rules._inherited_contract import inherited_contract
 from sarj_python_lint.rules._nominal_project import NominalSource
@@ -61,7 +62,13 @@ _OPERATIONAL_IDS = frozenset(
 _OPERATIONAL_PATH_PARTS = frozenset({"audit", "logger", "logging", "observability", "telemetry", "tracing"})
 _OPERATIONAL_NAME_PARTS = frozenset({"context", "log", "logger", "logging", "telemetry", "trace", "tracing"})
 _MIGRATION_PARTS = frozenset({"alembic", "migrations", "versions"})
-_RAW_SCHEMA_SUFFIXES = ("Config", "Credentials", "Settings")
+_FORMER_SCHEMA_SUFFIXES = ("Config", "Credentials", "Settings")
+_TYPED_DICT_BASES = frozenset({"typing.TypedDict", "typing_extensions.TypedDict"})
+_TYPED_DICT_WRAPPERS = frozenset({"NotRequired", "ReadOnly", "Required"})
+_NESTED_ROUTE_METHODS = frozenset({"get", "post", "put", "patch", "delete"})
+_RETURN_ROLE_VERBS = frozenset(
+    {"as", "build", "create", "find", "get", "load", "make", "parse", "read", "resolve", "to"}
+)
 _MIN_SWAPPABLE_ROLES = 2
 _SECOND_ARGUMENT = 1
 _PAIR_ARITY = 2
@@ -139,6 +146,24 @@ class _BoundaryOwnership:
         return names <= (original_names or self.classes.get(owner, set()))
 
 
+type _Function = ast.FunctionDef | ast.AsyncFunctionDef
+type _Boundary = _Function | ast.ClassDef
+
+
+@dataclass(frozen=True, slots=True)
+class _AdditionalBoundary:
+    node: _Boundary
+    kind: Literal["TypedDict", "wire alias", "class with a settings-like name", "nested route"]
+    wire_aliases: frozenset[str] = frozenset()
+
+    def roles(self, imports: ImportIndex, facts: _TypeFacts) -> list[_IdRole]:
+        if isinstance(self.node, ast.ClassDef):
+            return _class_id_roles(
+                self.node, imports, facts, include_wire_aliases=True, typed_dict=self.kind == "TypedDict"
+            )
+        return _boundary_roles(self.node, imports, facts)
+
+
 @final
 class PreferNominalIdTypes(Rule):
     id: str = "prefer-nominal-id-types"
@@ -161,14 +186,16 @@ class PreferNominalIdTypes(Rule):
             "Local source-proven Literal, NewType and Enum domains propagate through direct calls and rejecting equality guards against a matching typed record field. A relationship and carrier proof are required; a variable name alone does not establish a domain. Raw-input factories returning an established domain retain their construction boundary. Scoped bindings preserve unrelated same-name values. Ambiguous, rebound and type-parameter-shadowed declarations abstain. Dynamic calls, external domain declarations and arbitrary attribute inference are not resolved by this local flow extension. No automatic annotation rewrite is safe, especially for optional values or shadowing names.",
             "A single primitive ID field on a direct Pydantic model receives a warning when an explicit pattern already demonstrates its own identifier domain. Reuse or introduce a nominal ID while retaining the pattern and wire representation; an ID-shaped name alone is insufficient.",
             "The rule checks functions, methods, constructors, and classes for at least two ID-shaped roles with the same proven carrier. Existing coverage remains an error.",
-            "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs, external/inherited contracts and raw-schema exclusions still apply.",
+            "A single raw _id/_ids role in an explicitly declared ABC/Protocol contract now receives a warning even when no matching nominal type has been declared. This advisory does not claim two unlike carriers are swappable; operational IDs and external/inherited contracts still apply.",
             "Direct implementations of stable same-file abstract contracts also receive the raw-ID advisory, including overrides. Imported, ambiguous, decorated, mutated and multiple-inheritance bases remain excluded. A contract with an existing swappable-ID error owns that diagnostic instead of repeating its implementation as warnings.",
             "Imported first-party carriers and non-ID roles backed by a unique matching NewType in the owning distribution or a declared local dependency are errors. A single raw ID role also qualifies when that distribution already declares an unambiguous matching nominal type, including optional and collection forms. Ambiguous exports, conditional or relative imports, cycles, and unresolved ownership are skipped.",
             "Non-ID role discovery uses exact snake-case names and proven matching carriers; it does not infer brands from names alone. Dependency discovery respects declared workspace members and exclusions, and excludes optional and transitive dependencies.",
             "Rebound aliases, generic aliases, carrier names shadowed by type parameters, and mutated or escaped canonical provider namespaces are skipped conservatively across the file.",
             "Provider paths and wire models under adapters or integrations are excluded. First-party integration packages use the ordinary boundary checks.",
-            "Generated code, migrations, operational context, raw schemas, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
-            "Canonical object, ABC, Protocol and Generic bases do not hide fields or methods declared by the class. Mutated, escaped or rebound providers remain unknown. Other explicit bases stay excluded without requiring an override decorator; their inherited API may prescribe raw carriers. Local custom bases do not prove runtime member ownership remains closed.",
+            "Generated code, migrations, operational context, settings models, SQLAlchemy Mapped fields, ambiguous imports, and unlike carrier shapes are excluded.",
+            "TypedDict fields, Pydantic wire-aliased fields, non-settings Config, Credentials, and Settings boundaries, and proven nested FastAPI route parameters can receive warnings for newly visible raw ID roles. A name suffix alone does not establish a settings contract.",
+            "Functions and properties receive a warning when a raw return erases a unique matching nominal ID. Return roles match exactly, optionally after one leading verb, and plural roles require a collection carrier.",
+            "Canonical object, ABC, Protocol and Generic bases do not hide fields or methods declared by the class. Mutated, escaped or rebound providers remain unknown. Other explicit bases stay excluded from the original boundary checks; their inherited API may prescribe raw carriers. Local custom bases do not prove runtime member ownership remains closed.",
         ),
         examples=(
             RuleExample(
@@ -424,7 +451,92 @@ class PreferNominalIdTypes(Rule):
         for method in _local_contract_implementations(context, original_facts):
             diagnostics.extend(self._raw_contract_diagnostics(method, context, facts, owned_contract=True))
         diagnostics.extend(self._domain_diagnostics(context, diagnostics))
+        diagnostics.extend(self._additional_diagnostics(context, tree, original_facts, facts, diagnostics))
         return sorted(diagnostics, key=lambda diagnostic: (diagnostic.line, diagnostic.col))
+
+    def _additional_diagnostics(
+        self,
+        context: PythonFileContext,
+        tree: ast.Module,
+        original_facts: _TypeFacts,
+        facts: _TypeFacts,
+        existing: list[Diagnostic],
+    ) -> list[Diagnostic]:
+        imports = context.imports
+        nested_routes = _nested_routes(context)
+        boundaries = _additional_class_boundaries(context, tree, original_facts)
+        boundaries.extend(_AdditionalBoundary(node, "nested route") for node in nested_routes)
+        returns = _named_returns(tree, nested_routes)
+        if facts is original_facts and (
+            returns
+            or any(boundary.wire_aliases or _can_expand(boundary.node, imports, facts) for boundary in boundaries)
+        ):
+            facts = self._expanded_facts(context, tree, imports)
+
+        diagnostics = self._additional_boundary_warnings(context, boundaries, facts, existing)
+        diagnostics.extend(self._return_warnings(context, returns, facts))
+        return diagnostics
+
+    def _additional_boundary_warnings(
+        self,
+        context: PythonFileContext,
+        boundaries: list[_AdditionalBoundary],
+        facts: _TypeFacts,
+        existing: list[Diagnostic],
+    ) -> list[Diagnostic]:
+        imports = context.imports
+        reported_lines = {diagnostic.line for diagnostic in existing}
+        diagnostics: list[Diagnostic] = []
+        for boundary in boundaries:
+            roles = _qualifying_roles(boundary.roles(imports, facts), established=facts.value_roles)
+            raw = next(
+                (
+                    role
+                    for role in roles
+                    if role.carrier.raw
+                    and role.annotation.lineno not in reported_lines
+                    and (boundary.kind != "wire alias" or role.name in boundary.wire_aliases)
+                ),
+                None,
+            )
+            if raw is not None and not context.suppressions.is_suppressed(raw.annotation.lineno, self.code):
+                diagnostics.append(
+                    Diagnostic(
+                        context.path,
+                        raw.annotation.lineno,
+                        raw.annotation.col_offset + 1,
+                        self.code,
+                        f"This {boundary.kind} exposes raw identifiers. {_boundary_message(roles, established=True)}",
+                        severity=Severity.WARNING,
+                    )
+                )
+
+        return diagnostics
+
+    def _return_warnings(
+        self, context: PythonFileContext, returns: list[tuple[_Function, str]], facts: _TypeFacts
+    ) -> list[Diagnostic]:
+        imports = context.imports
+        diagnostics: list[Diagnostic] = []
+        for function, name in returns:
+            prefix, _, remainder = name.partition("_")
+            role = _established_return_role(name, function.returns, imports, facts)
+            if role is None and prefix in _RETURN_ROLE_VERBS:
+                role = _established_return_role(remainder, function.returns, imports, facts)
+            if role is None or context.suppressions.is_suppressed(role.annotation.lineno, self.code):
+                continue
+            diagnostics.append(
+                Diagnostic(
+                    context.path,
+                    role.annotation.lineno,
+                    role.annotation.col_offset + 1,
+                    self.code,
+                    f"`{function.name}` returns a raw carrier for the established `{role.name}` identifier. "
+                    "Preserve the nominal ID in its return annotation.",
+                    severity=Severity.WARNING,
+                )
+            )
+        return diagnostics
 
     def _domain_diagnostics(self, context: PythonFileContext, existing: list[Diagnostic]) -> list[Diagnostic]:
         diagnostics: list[Diagnostic] = []
@@ -607,11 +719,97 @@ def _boundary_nodes(
             continue
         if _name_parts(statement.name) & _OPERATIONAL_NAME_PARTS:
             continue
-        if _is_raw_schema_class(statement, imports):
+        if statement.name.endswith(_FORMER_SCHEMA_SUFFIXES):
             continue
         result.append(statement)
         result.extend(_boundary_methods(statement))
     return result
+
+
+def _additional_class_boundaries(
+    context: PythonFileContext, tree: ast.Module, facts: _TypeFacts
+) -> list[_AdditionalBoundary]:
+    imports = context.imports
+    boundaries: list[_AdditionalBoundary] = []
+    contracts: DeclaredContracts | None = None
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef) or _name_parts(node.name) & _OPERATIONAL_NAME_PARTS:
+            continue
+        suffix = node.name.endswith(_FORMER_SCHEMA_SUFFIXES)
+        fields = _effective_fields(node)
+        aliases = frozenset(name for name, field in fields.items() if _has_pydantic_wire_alias(field, imports))
+        if _has_only_marker_bases(node, imports, facts.shadowed_names):
+            boundaries.extend(_marker_class_boundaries(node, suffix=suffix, aliases=aliases))
+        elif fields:
+            if contracts is None:
+                contracts = DeclaredContracts(context)
+            boundary = _framework_field_boundary(node, contracts, suffix=suffix, aliases=aliases)
+            if boundary is not None:
+                boundaries.append(boundary)
+    return boundaries
+
+
+def _marker_class_boundaries(node: ast.ClassDef, *, suffix: bool, aliases: frozenset[str]) -> list[_AdditionalBoundary]:
+    if suffix:
+        return [
+            _AdditionalBoundary(node, "class with a settings-like name", aliases),
+            *(_AdditionalBoundary(method, "class with a settings-like name") for method in _boundary_methods(node)),
+        ]
+    if aliases:
+        return [_AdditionalBoundary(node, "wire alias", aliases)]
+    return []
+
+
+def _framework_field_boundary(
+    node: ast.ClassDef, contracts: DeclaredContracts, *, suffix: bool, aliases: frozenset[str]
+) -> _AdditionalBoundary | None:
+    if contracts.unit is None:
+        return None
+    model = DeclaredClass(contracts.unit, node)
+    if contracts.inherits(model, SETTINGS_BASES):
+        return None
+    if contracts.inherits(model, _TYPED_DICT_BASES):
+        return _AdditionalBoundary(node, "TypedDict")
+    if (suffix or aliases) and contracts.inherits(model, MODEL_BASES):
+        return _AdditionalBoundary(node, "class with a settings-like name" if suffix else "wire alias", aliases)
+    return None
+
+
+def _effective_fields(node: ast.ClassDef) -> dict[str, ast.AnnAssign]:
+    return {
+        field.target.id: field
+        for field in node.body
+        if isinstance(field, ast.AnnAssign) and isinstance(field.target, ast.Name)
+    }
+
+
+def _nested_routes(context: PythonFileContext) -> list[_Function]:
+    if "APIRouter" not in context.symbol_source and "FastAPI" not in context.symbol_source:
+        return []
+    return [
+        node
+        for node in context.nodes(ast.FunctionDef, ast.AsyncFunctionDef)
+        if node.decorator_list
+        and isinstance(context.parents.get(node), ast.FunctionDef | ast.AsyncFunctionDef)
+        and not _is_operational_function(node)
+        and any(route.method in _NESTED_ROUTE_METHODS for route in context.fastapi.routes(node))
+    ]
+
+
+def _named_returns(tree: ast.Module, nested_routes: list[_Function]) -> list[tuple[_Function, str]]:
+    functions = list(nested_routes)
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef) and not _is_operational_function(node):
+            functions.append(node)
+        elif isinstance(node, ast.ClassDef) and not _name_parts(node.name) & _OPERATIONAL_NAME_PARTS:
+            functions.extend(_boundary_methods(node))
+    return [
+        (function, name)
+        for function in functions
+        if function.returns is not None
+        and (name := function.name.removeprefix("_")).endswith(("_id", "_ids"))
+        and name not in _OPERATIONAL_IDS
+    ]
 
 
 def _has_only_marker_bases(node: ast.ClassDef, imports: ImportIndex, shadowed_names: frozenset[str]) -> bool:
@@ -727,26 +925,61 @@ def _established_raw_id(role: _IdRole, established: dict[str, str] | None) -> bo
     return established.get(name) == shape
 
 
+def _established_return_role(
+    name: str, annotation: ast.expr | None, imports: ImportIndex, facts: _TypeFacts
+) -> _IdRole | None:
+    role = _role(name, annotation, imports, facts, allow_bare_id=False)
+    if (
+        role is None
+        or (name.endswith("_ids") and "[" not in role.carrier.shape)
+        or not _established_raw_id(role, facts.value_roles)
+    ):
+        return None
+    return role
+
+
 def _role_keys(roles: list[_IdRole]) -> set[tuple[str, str]]:
     return {(role.name, role.carrier.shape) for role in roles}
 
 
-def _class_id_roles(node: ast.ClassDef, imports: ImportIndex, facts: _TypeFacts) -> list[_IdRole]:
+def _class_id_roles(
+    node: ast.ClassDef,
+    imports: ImportIndex,
+    facts: _TypeFacts,
+    *,
+    include_wire_aliases: bool = False,
+    typed_dict: bool = False,
+) -> list[_IdRole]:
     roles: dict[str, _IdRole | None] = {}
     for statement in node.body:
         if not isinstance(statement, ast.AnnAssign) or not isinstance(statement.target, ast.Name):
             continue
         name = statement.target.id
+        annotation = statement.annotation
+        if typed_dict:
+            annotation = _typed_dict_annotation(annotation, imports)
         role = (
             None
-            if _has_pydantic_wire_alias(statement, imports)
-            else _role(name, statement.annotation, imports, facts, allow_bare_id=True)
+            if not include_wire_aliases and _has_pydantic_wire_alias(statement, imports)
+            else _role(name, annotation, imports, facts, allow_bare_id=True)
         )
+        if role is not None and annotation is not statement.annotation:
+            role = replace(role, annotation=statement.annotation)
         previous = roles.get(name)
-        if role is not None and previous is not None and role.carrier == previous.carrier:
+        if not include_wire_aliases and role is not None and previous is not None and role.carrier == previous.carrier:
             continue
         roles[name] = role
     return [role for role in roles.values() if role is not None]
+
+
+def _typed_dict_annotation(annotation: ast.expr, imports: ImportIndex) -> ast.expr:
+    annotation = _stringized_annotation(annotation) or annotation
+    while (
+        isinstance(annotation, ast.Subscript)
+        and imports.resolved_symbol(annotation.value, sources=_TYPING_SOURCES) in _TYPED_DICT_WRAPPERS
+    ):
+        annotation = annotation.slice
+    return annotation
 
 
 def _has_pydantic_wire_alias(statement: ast.AnnAssign, imports: ImportIndex) -> bool:
@@ -1091,12 +1324,6 @@ def _stringized_annotation(annotation: ast.expr) -> ast.expr | None:
         return None
 
 
-def _is_raw_schema_class(node: ast.ClassDef, imports: ImportIndex) -> bool:
-    if node.name.endswith(_RAW_SCHEMA_SUFFIXES):
-        return True
-    return any(imports.resolves(base, sources=_TYPING_SOURCES, symbol="TypedDict") for base in node.bases)
-
-
 def _is_external_adapter_path(path: Path) -> bool:
     parts = {part.lower() for part in path.parts}
     return (
@@ -1292,6 +1519,10 @@ def _needed_carrier_names(
 def _annotations(tree: ast.Module, *, node_index: NodeIndex | None = None) -> list[ast.expr]:
     return [
         node.annotation for node in nodes(tree, ast.arg, ast.AnnAssign, index=node_index) if node.annotation is not None
+    ] + [
+        node.returns
+        for node in nodes(tree, ast.FunctionDef, ast.AsyncFunctionDef, index=node_index)
+        if node.returns is not None and node.name.endswith(("_id", "_ids"))
     ]
 
 
