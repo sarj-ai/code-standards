@@ -61,7 +61,7 @@ def test_flags_swappable_ids_in_private_decorated_and_test_boundaries(source: st
         "from typing import NewType\nFileId = NewType('FileId', str)\nFolderId = NewType('FolderId', str)\ndef load(file_id: FileId, folder_id: FolderId) -> None: ...\n",
         "def load(request_id: str, file_id: str) -> None: ...\n",
         "from sqlalchemy.orm import Mapped\nclass Row:\n    file_id: Mapped[str]\n    folder_id: Mapped[str]\n",
-        "from pydantic import BaseModel, Field\nclass Wire(BaseModel):\n    file_id: str = Field(alias='fileId')\n    folder_id: str = Field(alias='folderId')\n",
+        "from pydantic import BaseModel, Field\nclass Wire(BaseModel):\n    file_id: str = Field(alias='fileId')\n",
     ],
 )
 def test_allows_distinct_nominal_operational_and_wire_ids(source: str) -> None:
@@ -92,6 +92,128 @@ def test_checks_swappable_ids_in_first_party_integration_models() -> None:
     assert findings[0].severity is Severity.ERROR
     assert "canary_request_id" in findings[0].message
     assert "suite_run_id" in findings[0].message
+
+
+@pytest.mark.parametrize(
+    ("source", "boundary", "roles"),
+    [
+        (
+            (
+                "from typing_extensions import TypedDict as Record, NotRequired\n"
+                "class TaskFailureFields(Record):\n    task_id: str\n    organization_id: NotRequired[str | None]\n"
+            ),
+            "TypedDict",
+            ("task_id", "organization_id"),
+        ),
+        (
+            (
+                "from typing import Annotated\nfrom pydantic import BaseModel, Field as WireField\n"
+                "class ToolInput(BaseModel):\n"
+                "    tool_call_id: Annotated[str, WireField(validation_alias='toolCallId')]\n"
+                "    approval_id: str\n"
+            ),
+            "wire alias",
+            ("tool_call_id", "approval_id"),
+        ),
+        (
+            (
+                "from pydantic import BaseModel\nclass OutboundCallConfig(BaseModel):\n"
+                "    schedule_config_id: str\n    sip_trunk_id: str\n"
+            ),
+            "class with a settings-like name",
+            ("schedule_config_id", "sip_trunk_id"),
+        ),
+        (
+            "class Credentials:\n    account_id: str\n    member_id: str\n",
+            "class with a settings-like name",
+            ("account_id", "member_id"),
+        ),
+        (
+            (
+                "from fastapi import APIRouter\nfrom uuid import UUID\n"
+                "class Service:\n    def build(self):\n        router = APIRouter()\n"
+                "        @router.get('/conversation')\n"
+                "        async def get_conversation(suite_id: UUID, run_id: UUID): ...\n"
+            ),
+            "nested route",
+            ("suite_id", "run_id"),
+        ),
+    ],
+)
+def test_advises_on_new_identifier_boundaries(source: str, boundary: str, roles: tuple[str, str]) -> None:
+    findings = _check(source)
+
+    assert len(findings) == 1
+    assert findings[0].severity is Severity.WARNING
+    assert boundary in findings[0].message
+    assert all(f"`{role}`" in findings[0].message for role in roles)
+
+
+def test_keeps_covered_fields_as_errors_without_repeating_them() -> None:
+    source = (
+        "from pydantic import Field\n"
+        "class Payload:\n    approval_id: str\n    operation_group_id: str\n"
+        "    tool_call_id: str = Field(alias='toolCallId')\n"
+    )
+
+    findings = _check(source)
+
+    assert [item.severity for item in findings] == [Severity.ERROR, Severity.WARNING]
+    assert "`approval_id`, `operation_group_id`" in findings[0].message
+    assert "wire alias" in findings[1].message
+    assert findings[1].line == 5
+
+
+def test_exempts_import_proven_settings_descendants_with_elsewhere_matching_ids() -> None:
+    source = (
+        "from typing import NewType\n"
+        "from pydantic import Field\n"
+        "from pydantic_settings import BaseSettings as SettingsBase\n"
+        "AppId = NewType('AppId', str)\n"
+        "class SharedSettings(SettingsBase): ...\n"
+        "class VendorConnection(SharedSettings):\n"
+        "    app_id: str = Field(alias='APP_ID')\n"
+        "    client_id: str\n"
+    )
+
+    assert _check(source) == []
+
+
+def test_preserves_an_established_return_domain_for_functions_and_properties() -> None:
+    source = (
+        "from typing import NewType\nfrom uuid import UUID\n"
+        "BatchRootCallId = NewType('BatchRootCallId', UUID)\n"
+        "def get_batch_root_call_id() -> UUID | None: ...\n"
+        "class Batch:\n"
+        "    @property\n"
+        "    def batch_root_call_ids(self) -> list[UUID]: ...\n"
+    )
+
+    findings = _check(source)
+
+    assert [(item.line, item.severity) for item in findings] == [(4, Severity.WARNING), (7, Severity.WARNING)]
+    assert all("returns a raw carrier" in item.message for item in findings)
+
+
+@pytest.mark.parametrize(
+    "example",
+    [
+        "def get_call_id() -> CallId: ...\n",
+        "def delete_by_ids() -> int: ...\n",
+        "def get_batch_root_call_id() -> UUID: ...\n",
+        "def get_call_ids() -> UUID: ...\n",
+        "def get_call_id() -> UUID: ...  # sarj-noqa: SARJ093 — provider contract is raw\n",
+        "def build():\n    def get_call_id() -> UUID: ...\n",
+        "def build():\n    @dictionary.get('/value')\n    def move(first_id: str, second_id: str): ...\n",
+    ],
+)
+def test_insufficient_return_and_nested_boundary_evidence_stays_silent(example: str) -> None:
+    source = (
+        "from typing import NewType\nfrom uuid import UUID\n"
+        "CallId = NewType('CallId', UUID)\n"
+        "DeleteById = NewType('DeleteById', int)\n" + example
+    )
+    assert _check(source) == []
 
 
 def test_exact_suppression_is_recognized() -> None:
@@ -294,11 +416,23 @@ def test_old_errors_remain_errors_with_project_context(tmp_path: Path) -> None:
         "import example.types as ids\nids.FolderId = object\ndef move(file_id: str, folder_id: ids.FolderId) -> None: ...\n",
         "from example.types import FolderId\ndef move(file_id: str, folder_id: FolderId) -> None: ...\ndef other(FolderId): ...\n",
         "from example.types import FolderId\ndef move(file_id: str, folder_id: FolderId) -> None: ...  # sarj-noqa: SARJ093\n",
-        "from example.types import FolderId\nfrom typing import TypedDict\nclass Wire(TypedDict):\n    file_id: str\n    folder_id: FolderId\n",
     ],
 )
 def test_imported_expansion_preserves_shadowing_and_exclusions(tmp_path: Path, source: str) -> None:
     assert _project_check(tmp_path, source, "from typing import NewType\nFolderId = NewType('FolderId', str)\n") == []
+
+
+def test_typeddict_uses_imported_nominal_carrier_for_swappability(tmp_path: Path) -> None:
+    findings = _project_check(
+        tmp_path,
+        "from example.types import FolderId\nfrom typing import TypedDict\n"
+        "class Payload(TypedDict):\n    file_id: str\n    folder_id: FolderId\n",
+        "from typing import NewType\nFolderId = NewType('FolderId', str)\n",
+    )
+
+    [finding] = findings
+    assert finding.severity is Severity.WARNING
+    assert "TypedDict" in finding.message
 
 
 @pytest.mark.parametrize("depends", [False, True])
@@ -578,8 +712,7 @@ def test_signature_forms_still_expose_role_confusion(source: str) -> None:
         "def configure(file_id: str, **values: str) -> None: ...\n",
         "def configure(file_id, folder_id) -> None: ...\n",
         "def outer():\n    def move(left_id: str, right_id: str) -> None: ...\n",
-        "class WireSettings:\n    left_id: str\n    right_id: str\n",
-        "from typing import TypedDict as Wire\nclass Payload(Wire):\n    left_id: str\n    right_id: str\n",
+        "from typing import TypedDict as Wire\nclass Payload(Wire):\n    left_id: str\n",
     ],
 )
 def test_defaults_and_unproven_roles_do_not_invent_domain_types(source: str) -> None:
@@ -863,13 +996,12 @@ def test_wire_alias_metadata_survives_forward_annotation_strings(*, quote_annota
     folder = "Annotated[str, Field(serialization_alias='folderId')]"
     if quote_annotation:
         field, folder = repr(field), repr(folder)
-    assert (
-        _check(
-            "from typing import Annotated\nfrom pydantic import Field\n"
-            f"class Payload:\n    file_id: {field}\n    folder_id: {folder}\n"
-        )
-        == []
+    [finding] = _check(
+        "from typing import Annotated\nfrom pydantic import Field\n"
+        f"class Payload:\n    file_id: {field}\n    folder_id: {folder}\n"
     )
+    assert finding.severity is Severity.WARNING
+    assert "wire alias" in finding.message
 
 
 @pytest.mark.parametrize(
@@ -937,7 +1069,9 @@ def test_final_wire_alias_replaces_an_earlier_domain_field() -> None:
         "from pydantic import Field\nclass Pair:\n    file_id: str\n"
         "    file_id: str = Field(alias='fileId')\n    folder_id: str\n"
     )
-    assert _check(source) == []
+    [finding] = _check(source)
+    assert finding.severity is Severity.WARNING
+    assert finding.line == 4
 
 
 def test_final_raw_carrier_keeps_its_own_location_after_a_different_declaration() -> None:
