@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 _PREFIX = "from typing import Literal\nfrom pydantic import BaseModel\nclass Job(BaseModel):\n    kind: Literal['queued', 'done']\n    name: str = 'job'\n"
 _BASE = _PREFIX + "job = Job.model_construct(kind='unknown')\n"
+_SETTINGS_PREFIX = "from typing import Literal\nfrom pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    environment: Literal['dev', 'prod']\n"
+_UNPACKED = _PREFIX + "job = Job.model_construct(**row)\n"
 
 _PROBLEM = RuleProblem(
     key="unchecked-pydantic-literal-and-required-state",
@@ -201,7 +203,9 @@ _CASES = (
         0,
     ),
     ("copy-none-invalid", _PREFIX + "job = Job(kind='queued').model_copy(update={'name': None})\n", 1),
-    ("copy-nonliteral-update", _PREFIX + "job = Job(kind='queued').model_copy(update=updates)\n", 0),
+    ("copy-without-update", _PREFIX + "job = Job(kind='queued').model_copy()\n", 0),
+    ("copy-deep-only", _PREFIX + "job = Job(kind='queued').model_copy(deep=True)\n", 0),
+    ("copy-explicitly-no-update", _PREFIX + "job = Job(kind='queued').model_copy(update=None)\n", 0),
     (
         "copy-duplicate-keys",
         _PREFIX + "job = Job(kind='queued').model_copy(update={'kind': 'unknown', 'kind': 'done'})\n",
@@ -246,8 +250,6 @@ _CASES = (
     ),
     ("constructor-validation", _BASE.replace("Job.model_construct", "Job"), 0),
     ("unknown-value", _BASE.replace("kind='unknown'", "kind=raw_kind"), 0),
-    ("unpacked-construction", _BASE.replace("kind='unknown'", "**values"), 0),
-    ("mixed-unpacked-construction", _BASE.replace("kind='unknown'", "kind='unknown', **values"), 0),
     ("positional-construction", _BASE.replace("kind='unknown'", "values"), 0),
     (
         "numeric-literal-bool-equality",
@@ -314,6 +316,16 @@ _CASES = (
     ("class-in-schema-hook", _BASE.replace("job = Job", "type Mutated = Wrapper[Job]\njob = Job"), 0),
     ("model-fields-mutated", _BASE.replace("job = Job", "Job.model_fields['kind'] = custom\njob = Job"), 0),
     ("unknown-framework", _BASE.replace("from pydantic import", "from another_framework import"), 0),
+    (
+        "unproven-unpacked-construction",
+        _PREFIX + "class Other:\n    model_construct = factory\njob = Other.model_construct(**row)\n",
+        0,
+    ),
+    (
+        "copy-opaque-external-receiver",
+        _PREFIX + "def change(job: Job):\n    return job.model_copy(update=changes)\n",
+        0,
+    ),
     ("import-rebound", _BASE.replace("class Job", "BaseModel = custom\nclass Job"), 0),
     ("literal-shadowed", _BASE.replace("class Job", "Literal = custom\nclass Job"), 0),
     ("wildcard-import", "from another import *\n" + _BASE, 0),
@@ -367,6 +379,31 @@ def test_labeled_bypass_cases(label: str, source: str, count: int) -> None:
         PurePosixPath("app/models.py"),
     )
     assert len(_check(case.source)) == count
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(_UNPACKED, id="unpacked-construction"),
+        pytest.param(_UNPACKED.replace("**row", "**row, kind='unknown'"), id="mixed-construction"),
+        pytest.param(
+            _PREFIX + "job = Job(kind='queued')\nchanged = job.model_copy(update=changes)\n", id="local-copy-update"
+        ),
+        pytest.param(_SETTINGS_PREFIX + "settings = Settings.model_construct(**values)\n", id="settings-construction"),
+        pytest.param(
+            _SETTINGS_PREFIX + "settings = Settings(environment='dev').model_copy(update=changes)\n",
+            id="settings-copy-update",
+        ),
+    ],
+)
+def test_unchecked_payloads_warn_once_per_call(source: str) -> None:
+    assert [finding.severity for finding in _check(source)] == [Severity.WARNING]
+
+
+def test_unchecked_payload_respects_path_and_suppression_exclusions() -> None:
+    assert _check(_UNPACKED, "tests/test_models.py") == []
+    assert _check("# @generated\n" + _UNPACKED) == []
+    assert _check(_UNPACKED.rstrip() + "  # sarj-noqa: SARJ511 -- trusted row contract\n") == []
 
 
 _PUBLIC_EXAMPLES = NoInvalidPydanticBypass.public_examples()
@@ -561,9 +598,6 @@ def test_deep_right_grouped_field_annotation_abstains_without_recursion_failure(
     assert _check(source) == []
 
 
-_SETTINGS_PREFIX = "from typing import Literal\nfrom pydantic_settings import BaseSettings\nclass Settings(BaseSettings):\n    environment: Literal['dev', 'prod']\n"
-
-
 @pytest.mark.parametrize(
     ("operation", "expected"),
     [
@@ -572,12 +606,10 @@ _SETTINGS_PREFIX = "from typing import Literal\nfrom pydantic_settings import Ba
         ("Settings.model_construct(environment=None)", 1),
         ("Settings.model_construct(environment='dev')", 0),
         ("Settings.model_construct(environment=value)", 0),
-        ("Settings.model_construct(**values)", 0),
         ("Settings(environment='dev')", 0),
         ("Settings.model_validate({'environment': 'other'})", 0),
         ("Settings(environment='dev').model_copy(update={'environment': 'other'})", 1),
         ("Settings(environment='dev').model_copy(update={'environment': 'prod'})", 0),
-        ("Settings(environment='dev').model_copy(update=changes)", 0),
     ],
 )
 def test_direct_settings_validation_and_bypass_contracts(operation: str, expected: int) -> None:

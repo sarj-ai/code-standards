@@ -729,11 +729,11 @@ def test_standards_package_dogfoods_full_scope_on_pull_requests_and_pushes() -> 
     )
 
 
-def test_pre_push_keeps_complete_tests_in_ci() -> None:
+def test_local_hooks_leave_lint_type_and_test_verification_to_ci() -> None:
     lefthook = (REPO_ROOT / "lefthook.yml").read_text(encoding="utf-8")
-    pre_push = lefthook.partition("\npre-push:\n")[2]
-    assert "run: make lint" in pre_push
-    assert "make verify" not in pre_push
+    for command in ("make lint", "make dogfood", "make typecheck", "make verify"):
+        assert f"run: {command}" not in lefthook
+    assert "--only private-refs --commits" in lefthook.partition("\npre-push:\n")[2]
 
 
 def test_documentation_deploy_is_revision_bound_self_verifying_and_single_site() -> None:

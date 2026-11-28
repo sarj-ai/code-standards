@@ -377,6 +377,67 @@ def test_native_plugin_attestation_fetch_uses_the_workflow_token(workflow: str, 
     assert environment["GITHUB_TOKEN"] == "${{ github.token }}"
 
 
+def test_native_verify_phases_run_every_make_verify_target_once() -> None:
+    recipe = (REPO_ROOT / "Makefile").read_text(encoding="utf-8").split("\nverify:\n")[1].split("\n\n")[0]
+    tail = (REPO_ROOT / ".github/scripts/make-verify-tail.sh").read_text(encoding="utf-8")
+    strategy = _job("native-verify.yml", "verify")["strategy"]
+    assert is_object_mapping(strategy)
+    matrix = strategy["matrix"]
+    assert is_object_mapping(matrix)
+    phases = matrix["include"]
+    assert is_object_list(phases)
+    commands = "\n".join(str(phase["run"]) for phase in phases if is_object_mapping(phase))
+
+    assert sorted(_make_targets(commands)) == sorted(
+        _make_targets(recipe.replace("$(MAKE)", "make")) + _make_targets(tail.replace('"$@"', "make"))
+    )
+    assert _job("native-verify.yml", "complete")["needs"] == "verify"
+    assert _run("native-verify.yml", "complete", "Require every phase") == 'test "$RESULT" = success'
+
+
+def _make_targets(text: str) -> list[str]:
+    lines = [line.strip() for line in text.splitlines()]
+    return [
+        word
+        for line in lines
+        for word in line.partition("make --no-print-directory ")[2].split()
+        if not word.startswith("-") and word != '"$target"'
+    ] + [line.removeprefix("target=") for line in lines if line.startswith("target=verify-")]
+
+
+@pytest.mark.parametrize(("failures", "status"), [(0, 0), (2, 0), (3, 1)])
+def test_consumer_signature_audit_retries_transient_registry_failures(
+    tmp_path: Path, failures: int, status: int
+) -> None:
+    assert _run("release.yml", "build-typescript", "Verify registry signatures for the consumer dependencies") == (
+        'bash "$GITHUB_WORKSPACE/.github/scripts/release-audit-npm-signatures.sh"'
+    )
+    bin_directory = tmp_path / "bin"
+    bin_directory.mkdir()
+    attempts = tmp_path / "attempts"
+    _write_executable(
+        bin_directory / "npm",
+        f"""
+        #!/usr/bin/env bash
+        echo "$*" >>"{attempts}"
+        (( $(wc -l <"{attempts}") > {failures} ))
+        """,
+    )
+    _write_executable(bin_directory / "sleep", "#!/usr/bin/env bash\n")
+    result = subprocess.run(
+        ("bash", str(REPO_ROOT / ".github/scripts/release-audit-npm-signatures.sh")),
+        env={"PATH": f"{bin_directory}:/usr/bin:/bin", "RUNNER_TEMP": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == status
+    assert attempts.read_text().splitlines() == [
+        f"audit signatures --prefer-online --cache {tmp_path}/npm-consumer-cache"
+    ] * min(failures + 1, 3)
+
+
 def test_wheel_integration_installs_locked_documentation_formatters_before_testing() -> None:
     names = [step.get("name") for step in _steps("release.yml", "build-standards")]
     assert names.index("Install locked documentation formatters") < names.index("Test against the built wheel")
@@ -677,7 +738,14 @@ def test_package_qualification_preserves_non_documentation_prerequisites() -> No
     package_needs = packages["needs"]
     assert is_object_list(full_needs)
     assert is_object_list(package_needs)
-    assert set(package_needs) == set(full_needs) - {"docs-build", "docs-deploy", "npm-audit", "packages-complete"}
+    assert set(package_needs) == set(full_needs) - {
+        "docs-build",
+        "docs-deploy",
+        "npm-audit",
+        "packages-complete",
+        "python-compatibility",
+        "codeql",
+    }
     assert packages["if"] == "always()"
     assert "ci-record-analysis.sh" not in json.dumps(packages)
     assert _job("ci.yml", "docs-deploy")["needs"] == ["docs-build", "npm-audit"]

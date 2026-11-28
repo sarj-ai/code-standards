@@ -20,7 +20,7 @@ from repo_standards.core.parser import load_manifest as load_repository_manifest
 import yaml
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
 
-from sarj_standards._meta import CONFIGS_DIR
+from sarj_standards._meta import BASEDPYRIGHT_STRICT, CONFIGS_DIR, PYRIGHT_STRICT
 from sarj_standards.libs.filesystem import is_link_like
 from sarj_standards.libs.json_boundary import parse_json, parse_jsonc
 from sarj_standards.libs.repository import hooks as repository_hooks, ledger
@@ -45,6 +45,9 @@ if TYPE_CHECKING:
     from typing import TypeGuard
 
     from pydantic import JsonValue
+
+
+type _PyrightChain = dict[Path, dict[str, JsonValue]]
 
 
 class _PackageScripts(BaseModel):
@@ -167,6 +170,7 @@ _PYRIGHT_CONFIG_NAMES: Final = frozenset(
 _PYRIGHT_REPORT_DEPRECATED = re.compile(
     r"^\s*[\"']?reportDeprecated[\"']?\s*(?::|=)\s*(?P<value>[^,#/\n]+)", re.MULTILINE
 )
+_PYRIGHT_DIAGNOSTIC_LEVELS: Final = MappingProxyType({"none": 0, "hint": 1, "information": 2, "warning": 3, "error": 4})
 _RUFF_CONFIG_NAMES: Final = frozenset({".ruff.toml", "ruff.toml", "pyproject.toml"})
 _STANDALONE_RUFF_CONFIG_NAMES: Final = (".ruff.toml", "ruff.toml")
 _RUFF_REPLACEMENT_KEYS: Final = frozenset({"ignore", "per-file-ignores", "select"})
@@ -263,9 +267,8 @@ def diagnose(root: Path) -> list[Finding]:
     if not _has_adopted_typescript(root):
         findings.extend(_check_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
-    findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
-    findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_adoption_wiring(root, files))
     findings.extend(_check_shellcheck(root, files))
     from . import devops  # ruff: ignore[import-outside-top-level] -- native analysis dependencies initialize after adoption contracts.
 
@@ -400,9 +403,8 @@ def diagnose_adoption_health(root: Path, selected: Sequence[Path] = ()) -> list[
     if not _has_adopted_typescript(root):
         findings.extend(_check_plugin(root, files))
     findings.extend(check_retired_rules(root, files))
-    findings.extend(check_pyright_deprecated(root, files))
     findings.extend(check_ruff_policy_authority(root, files))
-    findings.extend(_check_adoption_wiring(root))
+    findings.extend(_check_adoption_wiring(root, files))
     findings.extend(_check_shellcheck(root, files))
     from . import devops  # ruff: ignore[import-outside-top-level] -- native analysis dependencies initialize after adoption contracts.
 
@@ -1594,12 +1596,13 @@ def _is_object_table(value: object) -> TypeGuard[dict[str, object]]:
     return is_object_mapping(value) and all(isinstance(key, str) for key in value)
 
 
-def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
+def _check_adoption_wiring(root: Path, files: Sequence[Path]) -> Iterator[Finding]:
     try:
         adopted = manifest.load(root)
     except OSError, TypeError, ValueError:
-        return
+        adopted = None
     if adopted is None:
+        yield from check_pyright_deprecated(root, files)
         return
 
     destinations: dict[str, Path | None] = {"root": root}
@@ -1617,6 +1620,11 @@ def _check_adoption_wiring(root: Path) -> Iterator[Finding]:
         yield from _check_adopted_config(root, name, destinations)
 
     yield from _check_python_wiring(root, destinations["python"], adopted)
+    python_root = destinations["python"]
+    if python_root is not None and "pyright" in adopted.configs:
+        yield from _check_pyright_wiring(root, python_root, files)
+    else:
+        yield from check_pyright_deprecated(root, files)
     yield from _check_typescript_wiring(root, destinations["typescript"], adopted)
 
 
@@ -1781,55 +1789,119 @@ def _check_python_wiring(root: Path, python_root: Path | None, adopted: manifest
             "doctor.ruff.wiring",
             'add `extend = ".ruff-strict.toml"` under `[tool.ruff]`',
         )
-    if "pyright" in adopted.configs:
-        active = python_root / "pyrightconfig.json"
-        wired = _pyright_reaches_managed(root, active, python_root / ".basedpyright-strict.json")
-        yield Finding(
-            Level.OK if wired else Level.DRIFT,
-            str(active.relative_to(root)),
-            "inherits the managed .basedpyright-strict.json"
-            if wired
-            else "cannot establish managed inheritance from the automatically discovered pyrightconfig.json",
-            "doctor.pyright.wiring",
-            None if wired else "restore pyrightconfig.json with a local `extends` chain to `.basedpyright-strict.json`",
-        )
 
 
-def _pyright_reaches_managed(root: Path, active: Path, managed: Path) -> bool:
+def _check_pyright_wiring(root: Path, python_root: Path, files: Sequence[Path]) -> Iterator[Finding]:
+    active = python_root / "pyrightconfig.json"
+    entrypoint = active if active.is_file() else python_root / "pyproject.toml"
+    managed = python_root / ".basedpyright-strict.json"
+    chain = _pyright_managed_chain(root, entrypoint, managed)
+    wired = entrypoint == active and chain is not None
+    yield Finding(
+        Level.OK if wired else Level.DRIFT,
+        str(active.relative_to(root)),
+        "inherits the managed .basedpyright-strict.json"
+        if wired
+        else "cannot establish managed inheritance from the automatically discovered pyrightconfig.json",
+        "doctor.pyright.wiring",
+        None if wired else "restore pyrightconfig.json with a local `extends` chain to `.basedpyright-strict.json`",
+    )
+    if chain is None:
+        yield from check_pyright_deprecated(root, files)
+        return
+    yield from _check_pyright_policy(root, chain)
+    yield from check_pyright_deprecated(root, tuple(path for path in files if path not in chain))
+
+
+def _pyright_managed_chain(root: Path, active: Path, managed: Path) -> _PyrightChain | None:
     try:
         return _pyright_chain(root.resolve(), active, managed.resolve())
     except OSError, UnicodeError, ValueError, RecursionError:
-        return False
+        return None
 
 
-def _pyright_chain(boundary: Path, current: Path, target: Path) -> bool:
-    visited: set[Path] = set()
+def _pyright_chain(boundary: Path, current: Path, target: Path) -> _PyrightChain | None:
+    chain: _PyrightChain = {}
     for _ in range(_MAX_PYRIGHT_CONFIGS):
         identity = current.resolve()
         if identity == target:
-            return current.is_file()
-        if current in visited or not identity.is_relative_to(boundary):
-            return False
-        visited.add(current)
-        parent = _pyright_parent(current)
+            return chain if current.is_file() else None
+        if current in chain or not identity.is_relative_to(boundary):
+            return None
+        document = _pyright_document(current)
+        parent = manifest.text_field(document, "extends")
         if parent is None:
-            return False
+            return None
+        chain[current] = document
         current = Path(os.path.normpath(current.parent / parent.replace("\\", "/")))
-    return False
+    return None
 
 
-def _pyright_parent(path: Path) -> str | None:
+def _pyright_document(path: Path) -> dict[str, JsonValue]:
     source = path.read_text(encoding="utf-8")
     if path.suffix == ".toml":
         tool = manifest.table_field(tomllib.loads(source), "tool")
         if "basedpyright" in tool and "pyright" in tool:
-            return None
-        document = tool.get("basedpyright", tool.get("pyright"))
+            return {}
+        document = parse_json(json.dumps(tool.get("basedpyright", tool.get("pyright")), default=str))
     else:
         document = parse_jsonc(source)
-    if is_object_mapping(document) and isinstance(parent := document.get("extends"), str):
-        return parent
-    return None
+    return document if isinstance(document, dict) else {}
+
+
+def _check_pyright_policy(root: Path, chain: _PyrightChain) -> Iterator[Finding]:
+    policy = _pyright_document(PYRIGHT_STRICT) | _pyright_document(BASEDPYRIGHT_STRICT)
+    for path, document in chain.items():
+        location = str(path.relative_to(root))
+        yield from _pyright_policy_findings(location, document, policy)
+        environments = document.get("executionEnvironments")
+        if isinstance(environments, list):
+            for index, environment in enumerate(environments):
+                if isinstance(environment, dict):
+                    yield from _pyright_policy_findings(
+                        location, environment, policy, prefix=f"executionEnvironments[{index}]."
+                    )
+
+
+def _pyright_policy_findings(
+    location: str, document: Mapping[str, JsonValue], policy: Mapping[str, JsonValue], *, prefix: str = ""
+) -> Iterator[Finding]:
+    for key, value in document.items():
+        if _pyright_weakens_setting(key, value, policy.get(key)):
+            setting = f"{prefix}{key}"
+            yield Finding(
+                Level.DRIFT,
+                f"{location}: {setting}",
+                f"sets `{setting}` to {value!r}, which weakens the managed Pyright policy",
+                "doctor.pyright.weakens-policy",
+                f"remove the local `{key}` setting to inherit the managed policy",
+            )
+
+
+def _pyright_weakens_setting(key: str, value: JsonValue, managed: JsonValue) -> bool:
+    if key == "ignore":
+        return isinstance(value, list) and bool(value)
+    if key == "typeCheckingMode":
+        return isinstance(value, str) and value != managed
+    if key == "enableTypeIgnoreComments":
+        return value is True and managed is False
+    if key.startswith("strict"):
+        return value is False and managed is True
+    if not key.startswith("report"):
+        return False
+    actual = _pyright_diagnostic_level(value)
+    floor = _pyright_diagnostic_level(managed)
+    return actual is not None and floor is not None and actual < floor
+
+
+def _pyright_diagnostic_level(value: JsonValue) -> int | None:
+    match value:
+        case bool():
+            return _PYRIGHT_DIAGNOSTIC_LEVELS["error" if value else "none"]
+        case str():
+            return _PYRIGHT_DIAGNOSTIC_LEVELS.get(value)
+        case _:
+            return None
 
 
 def _check_adopted_config(root: Path, name: str, destinations: Mapping[str, Path | None]) -> Iterator[Finding]:

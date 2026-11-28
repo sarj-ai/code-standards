@@ -132,7 +132,7 @@ def handle(status: Status):
 
     [finding] = _check(source)
 
-    assert finding.severity.value == "warning"
+    assert finding.severity.value == "error"
     assert "`Status.FAILED`" in finding.message
     assert "Add an explicit arm" in finding.message
 
@@ -156,7 +156,7 @@ def label(error):
 
     [finding] = analyze([PreferMatchAssertNever.id], [path], jobs=1)
 
-    assert finding.severity.value == "warning"
+    assert finding.severity.value == "error"
     assert finding.line == 8
     assert "`Status.CANCELLED`, `Status.FAILED`" in finding.message
 
@@ -264,6 +264,36 @@ def handle(status: Status) -> None:
 """
 
     assert _check(source) == []
+
+
+@pytest.mark.parametrize(
+    ("other", "initial", "expected"),
+    [
+        pytest.param("Status.FAILED", "", 0, id="proper-subset"),
+        pytest.param("Status.CANCELLED", "", 1, id="all-members"),
+        pytest.param("Status.FAILED", "    status = Status.CANCELLED\n", 1, id="earlier-binding"),
+    ],
+)
+def test_defaulting_branch_respects_the_adjacent_producer(other: str, initial: str, expected: int) -> None:
+    source = f"""{_ENUM_PREAMBLE}
+    CANCELLED = "cancelled"
+
+def label(kind: int, active: bool) -> str:
+{initial}    match kind:
+        case 0:
+            status = Status.OPEN
+        case 1:
+            status = Status.CLOSED if active else Status.FAILED
+        case 2:
+            status = {other}
+    if status is Status.OPEN:
+        return "open"
+    elif status is Status.CLOSED:
+        return "closed"
+    else:
+        return "done"
+"""
+    assert len(_check(source)) == expected
 
 
 def test_allows_default_then_refine_match() -> None:

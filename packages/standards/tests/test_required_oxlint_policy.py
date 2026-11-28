@@ -47,6 +47,10 @@ def test_consumer_config_cannot_turn_the_floor_off(tmp_path: Path, selected: fro
         "export const b: number = a;\n"
         "// eslint-disable-next-line no-debugger\n"
         "debugger;\n"
+        "// @ts-expect-error short\n"
+        "export const c: string = a;\n"
+        "// @ts-expect-error twelve chars\n"
+        "export const d: string = a;\n"
     )
     root = project(tmp_path / "repo", {"src/a.ts": source}, config=_OPT_OUT)
 
@@ -57,6 +61,7 @@ def test_consumer_config_cannot_turn_the_floor_off(tmp_path: Path, selected: fro
         ("@sarj/directive-require-description", 6),
         ("@sarj/no-vague-suppression-description", 2),
         ("typescript/ban-ts-comment", 4),
+        ("typescript/ban-ts-comment", 8),
     ]
 
 

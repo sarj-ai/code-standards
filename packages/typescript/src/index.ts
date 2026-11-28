@@ -136,10 +136,12 @@ import preferMonotonicForElapsedTime from "./rules/prefer-monotonic-for-elapsed-
 import preferMultiValueZodLiteral from "./rules/prefer-multi-value-zod-literal.js";
 import preferNamedCallbackDomain from "./rules/prefer-named-callback-domain.js";
 import preferNamedComplexReturnType from "./rules/prefer-named-complex-return-type.js";
+import preferNamedLiteralUnion from "./rules/prefer-named-literal-union.js";
 import preferNativeFetchInServerActions from "./rules/prefer-native-fetch-in-server-actions.js";
 import preferNativeRandomUuid from "./rules/prefer-native-random-uuid.js";
 import preferNodeCryptoHash from "./rules/prefer-node-crypto-hash.js";
 import preferNodeFsPromises from "./rules/prefer-node-fs-promises.js";
+import preferNominalIdMembers from "./rules/prefer-nominal-id-members.js";
 import preferNominalIdTypes from "./rules/prefer-nominal-id-types.js";
 import preferNonNullableCollection from "./rules/prefer-non-nullable-collection.js";
 import preferNullishFilterPredicate from "./rules/prefer-nullish-filter-predicate.js";
@@ -163,6 +165,7 @@ import productionDerivedTestCases from "./rules/production-derived-test-cases.js
 import reactPreferUpdaterFunction from "./rules/react-prefer-updater-function.js";
 import repeatedStaticCallCases from "./rules/repeated-static-call-cases.js";
 import requireAssertNever from "./rules/require-assert-never.js";
+import requireBrandedIdSchema from "./rules/require-branded-id-schema.js";
 import requireButtonAccessibleName from "./rules/require-button-accessible-name.js";
 import requireCamelcaseProperties from "./rules/require-camelcase-properties.js";
 import requireConstrainedSchemaInteger from "./rules/require-constrained-schema-integer.js";
@@ -315,10 +318,12 @@ const RULES = {
   "prefer-multi-value-zod-literal": preferMultiValueZodLiteral,
   "prefer-named-callback-domain": preferNamedCallbackDomain,
   "prefer-named-complex-return-type": preferNamedComplexReturnType,
+  "prefer-named-literal-union": preferNamedLiteralUnion,
   "prefer-native-fetch-in-server-actions": preferNativeFetchInServerActions,
   "prefer-native-random-uuid": preferNativeRandomUuid,
   "prefer-node-crypto-hash": preferNodeCryptoHash,
   "prefer-node-fs-promises": preferNodeFsPromises,
+  "prefer-nominal-id-members": preferNominalIdMembers,
   "prefer-nominal-id-types": preferNominalIdTypes,
   "prefer-non-nullable-collection": preferNonNullableCollection,
   "prefer-nullish-filter-predicate": preferNullishFilterPredicate,
@@ -342,6 +347,7 @@ const RULES = {
   "react-prefer-updater-function": reactPreferUpdaterFunction,
   "repeated-static-call-cases": repeatedStaticCallCases,
   "require-assert-never": requireAssertNever,
+  "require-branded-id-schema": requireBrandedIdSchema,
   "require-button-accessible-name": requireButtonAccessibleName,
   "require-camelcase-properties": requireCamelcaseProperties,
   "require-constrained-schema-integer": requireConstrainedSchemaInteger,

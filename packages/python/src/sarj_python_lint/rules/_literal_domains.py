@@ -38,6 +38,14 @@ class DomainDeclaration(NamedTuple):
 
 
 @dataclass(frozen=True, slots=True)
+class StringDomain:
+    name: str
+    path: Path
+    members: frozenset[str] | None
+    rebound: bool
+
+
+@dataclass(frozen=True, slots=True)
 class LiteralDomainIndex:
     aliases: Mapping[frozenset[str], list[DomainDeclaration]]
     enums: Mapping[frozenset[str], list[DomainDeclaration]]
@@ -61,29 +69,46 @@ class LiteralDomainIndex:
         return cls(aliases, enums)
 
 
-def string_literal_members(node: ast.Subscript) -> frozenset[str] | None:
-    if not isinstance(node.slice, ast.Tuple):
-        return None
+def string_literal_members(node: ast.Subscript, *, minimum: int = 2) -> frozenset[str] | None:
+    elements = node.slice.elts if isinstance(node.slice, ast.Tuple) else [node.slice]
     members: set[str] = set()
-    for member in node.slice.elts:
+    for member in elements:
         if not isinstance(member, ast.Constant) or not isinstance(member.value, str):
             return None
         members.add(member.value)
-    return frozenset(members) if len(members) > 1 else None
+    return frozenset(members) if len(members) >= minimum else None
 
 
 def literal_aliases(tree: ast.Module, imports: ImportIndex) -> list[LiteralAlias]:
-    candidates = [
-        LiteralAlias(name, value, members)
-        for name, value in _alias_values(tree, imports)
-        if isinstance(value, ast.Subscript)
-        and imports.resolves(value.value, sources=TYPING_SOURCES, symbol="Literal")
-        and (members := string_literal_members(value)) is not None
-    ]
+    candidates = list(_literal_alias_candidates(tree, imports, minimum=2))
     if not candidates:
         return []
     rebound = module_rebindings(tree)
     return [candidate for candidate in candidates if candidate.name not in rebound]
+
+
+def string_domains(tree: ast.Module, imports: ImportIndex, path: Path) -> tuple[StringDomain, ...]:
+    aliases = list(_literal_alias_candidates(tree, imports, minimum=1))
+    enums = [
+        node for node in tree.body if isinstance(node, ast.ClassDef) and _string_enum_base(node, imports) == "StrEnum"
+    ]
+    if not aliases and not enums:
+        return ()
+    rebound = module_rebindings(tree)
+    return (
+        *(StringDomain(alias.name, path, alias.members, alias.name in rebound) for alias in aliases),
+        *(StringDomain(node.name, path, _enum_members(node, minimum=1), node.name in rebound) for node in enums),
+    )
+
+
+def _literal_alias_candidates(tree: ast.Module, imports: ImportIndex, *, minimum: int) -> Iterator[LiteralAlias]:
+    for name, value in _alias_values(tree, imports):
+        if (
+            isinstance(value, ast.Subscript)
+            and imports.resolves(value.value, sources=TYPING_SOURCES, symbol="Literal")
+            and (members := string_literal_members(value, minimum=minimum)) is not None
+        ):
+            yield LiteralAlias(name, value, members)
 
 
 def _alias_values(tree: ast.Module, imports: ImportIndex) -> Iterator[_AliasValue]:
@@ -102,7 +127,7 @@ def _alias_values(tree: ast.Module, imports: ImportIndex) -> Iterator[_AliasValu
 
 
 def _string_enums(tree: ast.Module, imports: ImportIndex) -> dict[str, frozenset[str]]:
-    candidates = [node for node in tree.body if isinstance(node, ast.ClassDef) and _has_string_enum_base(node, imports)]
+    candidates = [node for node in tree.body if isinstance(node, ast.ClassDef) and _string_enum_base(node, imports)]
     if not candidates:
         return {}
     rebound = module_rebindings(tree)
@@ -113,19 +138,22 @@ def _string_enums(tree: ast.Module, imports: ImportIndex) -> dict[str, frozenset
     }
 
 
-def _has_string_enum_base(node: ast.ClassDef, imports: ImportIndex) -> bool:
+def _string_enum_base(node: ast.ClassDef, imports: ImportIndex) -> str | None:
     if node.decorator_list or node.keywords:
-        return False
+        return None
     match node.bases:
         case [base]:
-            return imports.resolved_symbol(base, sources=_ENUM_SOURCES) in {"Enum", "StrEnum"}
+            symbol = imports.resolved_symbol(base, sources=_ENUM_SOURCES)
+            return symbol if symbol in {"Enum", "StrEnum"} else None
         case [ast.Name(id="str"), base]:
-            return imports.builtin_is_unshadowed("str") and imports.resolves(base, sources=_ENUM_SOURCES, symbol="Enum")
+            if imports.builtin_is_unshadowed("str") and imports.resolves(base, sources=_ENUM_SOURCES, symbol="Enum"):
+                return "StrEnum"
         case _:
-            return False
+            pass
+    return None
 
 
-def _enum_members(node: ast.ClassDef) -> frozenset[str] | None:
+def _enum_members(node: ast.ClassDef, *, minimum: int = 2) -> frozenset[str] | None:
     members: set[str] = set()
     for statement in node.body:
         match statement:
@@ -142,4 +170,4 @@ def _enum_members(node: ast.ClassDef) -> frozenset[str] | None:
                 continue
             case _:
                 return None
-    return frozenset(members) if len(members) > 1 else None
+    return frozenset(members) if len(members) >= minimum else None

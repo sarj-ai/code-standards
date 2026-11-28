@@ -4853,7 +4853,14 @@
       "test-bun-ts": "error",
       "test-playwright-ts": "error",
       "design-system-tsx": "error"
-    }
+    },
+    "options": [
+      {
+        "allowDefaultCaseForExhaustiveSwitch": true,
+        "considerDefaultExhaustiveForUnions": false,
+        "requireDefaultForNonUnion": false
+      }
+    ]
   },
   "@typescript-eslint/triple-slash-reference": {
     "kind": "native",
@@ -6478,6 +6485,10 @@
       {
         "selector": "TSModuleDeclaration[kind='namespace']",
         "message": "Use ES modules instead of namespaces."
+      },
+      {
+        "selector": "TSModuleDeclaration[id.type='Literal']:not([body])",
+        "message": "Declare this module's exports explicitly. Use an empty module body for side-effect-only imports."
       }
     ]
   },

@@ -217,6 +217,7 @@
       "prefer-required-prerequisite",
       "prefer-result-over-nullable-exception",
       "prefer-runtime-validation",
+      "prefer-secret-field-type",
       "prefer-self-documenting-constant",
       "prefer-self-type-annotation",
       "prefer-semantic-temporal-types",
@@ -465,10 +466,12 @@
       "prefer-multi-value-zod-literal",
       "prefer-named-callback-domain",
       "prefer-named-complex-return-type",
+      "prefer-named-literal-union",
       "prefer-native-fetch-in-server-actions",
       "prefer-native-random-uuid",
       "prefer-node-crypto-hash",
       "prefer-node-fs-promises",
+      "prefer-nominal-id-members",
       "prefer-nominal-id-types",
       "prefer-non-nullable-collection",
       "prefer-nullish-filter-predicate",
@@ -492,6 +495,7 @@
       "react-prefer-updater-function",
       "repeated-static-call-cases",
       "require-assert-never",
+      "require-branded-id-schema",
       "require-button-accessible-name",
       "require-camelcase-properties",
       "require-constrained-schema-integer",
@@ -788,7 +792,8 @@
       "SARJ609",
       "SARJ610",
       "SARJ611",
-      "SARJ612"
+      "SARJ612",
+      "SARJ613"
     ],
     "sql": [
       "SARJ101",

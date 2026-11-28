@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "catalogSha256": "8a99047f0702ed96a71f91297ed036af63453344ee9e86452fdc1719c780abe4",
-  "cliSha256": "dcf7a060b39bc133fac5d6aa3d902e00b778524a9d617a7823904446f16352f0",
+  "catalogSha256": "ab0e887edcb59e620709b3cf0bd9654223ec95dd8d4fdc2be16ba49fe93bb960",
+  "cliSha256": "e05ddcb10173eabc0db9b4658162a96833ff02b8c1dd43411a611788853ee520",
   "formatterVersions": {
     "prettier": "3.10.1",
     "prettierPluginSh": "0.20.2",
@@ -9690,6 +9690,41 @@
       ],
       "optionsSchemaSource": null
     },
+    "oxlint:prefer-named-literal-union": {
+      "examples": [
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/drafts.ts",
+              "source": "interface Draft {\n  state: \"queued\" | \"running\" | \"done\";\n  previousState: \"queued\" | \"running\" | \"done\";\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/drafts.ts",
+          "id": "name-repeated-domain",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "Name the shared draft state"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/drafts.ts",
+              "source": "type DraftState = \"queued\" | \"running\" | \"done\";\ninterface Draft {\n  state: DraftState;\n  previousState: DraftState;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/drafts.ts",
+          "id": "use-named-domain",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Use one state alias"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
     "oxlint:prefer-native-fetch-in-server-actions": {
       "examples": [
         {
@@ -9856,6 +9891,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not block on a synchronous read"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:prefer-nominal-id-members": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/receipt.ts",
+              "source": "import { z } from \"zod\";\nconst AccountId = z.string().brand<\"AccountId\">();\nconst InvoiceId = z.string().brand<\"InvoiceId\">();\ninterface Receipt {\n  accountId: z.output<typeof AccountId>;\n  invoiceId: z.output<typeof InvoiceId>;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/receipt.ts",
+          "id": "branded-members",
+          "outcome": "accept",
+          "scenarioId": "object-identifier-roles",
+          "title": "Branded fields keep identifier roles distinct"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/receipt.ts",
+              "source": "interface Receipt {\n  accountId: string;\n  invoiceId: string;\n}\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/receipt.ts",
+          "id": "raw-members",
+          "outcome": "reject",
+          "scenarioId": "object-identifier-roles",
+          "title": "Primitive properties accept swapped identifiers"
         }
       ],
       "optionsSchemaSource": null
@@ -10891,6 +10961,41 @@
           "outcome": "reject",
           "scenarioId": "primary",
           "title": "Do not leave an exhaustive default empty"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "oxlint:require-branded-id-schema": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "src/recording.ts",
+              "source": "import { z } from \"zod\";\nconst TakeIdSchema = z.uuid().brand<\"TakeId\">();\nconst SessionIdSchema = z.uuid().brand<\"SessionId\">();\nexport const RecordingSchema = z.strictObject({\n  takeId: TakeIdSchema,\n  sessionId: SessionIdSchema,\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/recording.ts",
+          "id": "recording-ids-with-brands",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "Brand each parsed identifier with its own domain"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "src/recording.ts",
+              "source": "import { z } from \"zod\";\nexport const RecordingSchema = z.strictObject({\n  takeId: z.uuid(),\n  sessionId: z.uuid(),\n});\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "src/recording.ts",
+          "id": "recording-ids-without-brands",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A take and a session validate as the same type"
         }
       ],
       "optionsSchemaSource": null
@@ -15756,6 +15861,36 @@
           "outcome": "accept",
           "scenarioId": "settings-validation-boundary",
           "title": "Construct the validated settings object at startup"
+        },
+        {
+          "expectedCount": 2,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Job(BaseModel):\n    name: str\n\n\njob = Job.model_construct(**row)\nupdated = Job(name=\"draft\").model_copy(update=changes)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "unchecked-mapping-payloads",
+          "outcome": "reject",
+          "scenarioId": "mapping-validation-boundary",
+          "title": "Unpacked construction and opaque copy updates bypass validation"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass Job(BaseModel):\n    name: str\n\n\njob = Job.model_validate(row)\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "validated-mapping-payload",
+          "outcome": "accept",
+          "scenarioId": "mapping-validation-boundary",
+          "title": "Validate the complete mapping before storing field values"
         }
       ],
       "optionsSchemaSource": null
@@ -21124,6 +21259,21 @@
           "title": "The boundary uses the existing nominal ID"
         },
         {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from enum import StrEnum\n\n\nclass DeliveryMode(StrEnum):\n    IMMEDIATE = \"immediate\"\n    SCHEDULED = \"scheduled\"\n\n\ndef dispatch(delivery_mode: str | None) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "established-string-domain",
+          "outcome": "reject",
+          "scenarioId": "canonical-role",
+          "title": "A matching string role preserves its declared domain"
+        },
+        {
           "expectedCount": 0,
           "files": [
             {
@@ -21182,6 +21332,21 @@
           "outcome": "accept",
           "scenarioId": "domain-flow",
           "title": "A typed caller preserves the closed domain"
+        },
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/service.py",
+              "source": "from typing import Literal\n\ntype DeliveryMode = Literal[\"immediate\", \"scheduled\"]\n\n\ndef dispatch(delivery_mode: DeliveryMode | None) -> None: ...\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/service.py",
+          "id": "preserved-string-domain",
+          "outcome": "accept",
+          "scenarioId": "canonical-role",
+          "title": "A typed parameter keeps the declared string domain"
         },
         {
           "expectedCount": 1,
@@ -22225,6 +22390,41 @@
           "outcome": "accept",
           "scenarioId": "primary",
           "title": "Return a validated domain value"
+        }
+      ],
+      "optionsSchemaSource": null
+    },
+    "python:prefer-secret-field-type": {
+      "examples": [
+        {
+          "expectedCount": 0,
+          "files": [
+            {
+              "path": "app/settings.py",
+              "source": "from pydantic import SecretStr\nfrom pydantic_settings import BaseSettings\n\n\nclass CloudflareSettings(BaseSettings):\n    api_token: SecretStr\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/settings.py",
+          "id": "masked-settings-credential",
+          "outcome": "accept",
+          "scenarioId": "primary",
+          "title": "A settings field masks its credential"
+        },
+        {
+          "expectedCount": 1,
+          "files": [
+            {
+              "path": "app/models.py",
+              "source": "from pydantic import BaseModel\n\n\nclass GoogleTokenResponse(BaseModel):\n    access_token: str\n"
+            }
+          ],
+          "fixedFiles": [],
+          "focusPath": "app/models.py",
+          "id": "plaintext-model-credential",
+          "outcome": "reject",
+          "scenarioId": "primary",
+          "title": "A model exposes its access token"
         }
       ],
       "optionsSchemaSource": null

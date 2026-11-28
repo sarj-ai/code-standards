@@ -140,6 +140,30 @@ const FILES: Readonly<Record<string, string>> = {
   "src/regexp-match.js": "export const match = \"abc\".match(/b/);\n",
   "src/regexp-exec.js": "export const match = /b/.exec(\"abc\");\n",
   "src/async-cleanup.ts": "export async function settle(cleanup: () => Promise<void>): Promise<void> { await Promise.resolve().finally(async () => { await cleanup(); }); }\n",
+  "src/method-signatures.ts": [
+    "export interface Port { save(value: string): void }",
+    "export type Writer = { save(value: string): void };",
+    "",
+  ].join("\n"),
+  "src/property-signatures.ts": [
+    "export interface Port { save: (value: string) => void }",
+    "export class Writer { save(value: string): string { return value; } }",
+    "",
+  ].join("\n"),
+  "src/shorthand-ambient.d.ts": 'declare module "untyped-module";\n',
+  "src/explicit-ambient.d.ts": 'declare module "typed-module" { export const value: 1 }\ndeclare module "*.css" {}\n',
+  "src/partial-switch.ts": [
+    'export function label(status: "ready" | "pending"): string {',
+    '  switch (status) { case "ready": return "Ready"; default: return "Unknown"; }',
+    "}",
+    "",
+  ].join("\n"),
+  "src/complete-switch.ts": [
+    'export function label(status: "ready" | "pending"): string {',
+    '  switch (status) { case "ready": return "Ready"; case "pending": return "Pending"; default: return status; }',
+    "}",
+    "",
+  ].join("\n"),
 
 };
 
@@ -301,6 +325,21 @@ describe("the managed Oxlint config in a consumer", () => {
   it("reports mixed-type union conditions and allows nullable primitive conditions", () => {
     expect(codesOf("src/mixed-condition.ts")).toContain("typescript(strict-boolean-expressions)");
     expect(codesOf("src/nullable-conditions.ts")).not.toContain("typescript(strict-boolean-expressions)");
+  });
+
+  it("reports method shorthand and accepts function properties and class methods", () => {
+    expect(codesOf("src/method-signatures.ts")).toContain("typescript(method-signature-style)");
+    expect(codesOf("src/property-signatures.ts")).not.toContain("typescript(method-signature-style)");
+  });
+
+  it("reports shorthand ambient modules and accepts explicit exports and side-effect declarations", () => {
+    expect(codesOf("src/shorthand-ambient.d.ts")).toContain("eslint-js(no-restricted-syntax)");
+    expect(codesOf("src/explicit-ambient.d.ts")).not.toContain("eslint-js(no-restricted-syntax)");
+  });
+
+  it("requires explicit union cases even with a default and accepts a defensive default", () => {
+    expect(codesOf("src/partial-switch.ts")).toContain("typescript(switch-exhaustiveness-check)");
+    expect(codesOf("src/complete-switch.ts")).not.toContain("typescript(switch-exhaustiveness-check)");
   });
 
   it("reports new on Promise static methods in JavaScript the type check skips", () => {

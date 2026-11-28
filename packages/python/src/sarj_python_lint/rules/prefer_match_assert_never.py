@@ -23,6 +23,7 @@ from sarj_python_lint.rule_base import (
 from sarj_python_lint.rules._declared_contracts import DeclaredContracts, written_attribute_roots
 from sarj_python_lint.rules._enum_declarations import class_enum_members, stdlib_enum_base
 from sarj_python_lint.rules._finite_literal_dispatch import rejecting_body
+from sarj_python_lint.rules._suite_flow import previous_statements
 from sarj_python_lint.rules._suppression_comments import scan_comments_or_none
 
 
@@ -91,8 +92,9 @@ class PreferMatchAssertNever(ProjectRule):
         autofix=AutofixPolicy.SAFE,
         limitations=(
             "Safe fixes remove only an exact single argument-type ignore from an existing terminal assert_never call after every member of a canonical local StrEnum is already handled by terminating identity branches. Missing members, other suppressions, reasons, aliases, guarded branches and dynamic domains remain manual.",
-            "The no-op error requires a parameter annotated with a local enum. The defaulting warning checks match and if/elif dispatch on names and one-level attributes, including enums resolved through direct first-party imports or one re-export.",
-            "The warning requires a direct standard enum base and distinct literal string or integer members. It skips guarded arms, generated files, and dynamic or unresolved enum domains.",
+            "The no-op error requires a parameter annotated with a local enum. The defaulting check handles match and if/elif dispatch on names and one-level attributes, including enums resolved through direct first-party imports or one re-export.",
+            "The defaulting check requires a direct standard enum base and distinct literal string or integer members. It skips guarded arms, generated files, and dynamic or unresolved enum domains.",
+            "The defaulting check skips a local whose only bindings are assignments of a proper enum subset in the immediately preceding match.",
             "Independently warns on import-proven assert_never calls with a trailing blanket or argument-type ignore; module-wide disables are not analyzed.",
         ),
         examples=(
@@ -214,7 +216,7 @@ class PreferMatchAssertNever(ProjectRule):
                 continue
             finding = _silent_dispatch_error(
                 node, context, local_enums, local_enum, consumed_elifs=consumed_elifs, code=self.code
-            ) or _defaulting_warning(node, context, closed_enum, self.code)
+            ) or _defaulting_error(node, context, closed_enum, self.code)
             if finding is not None:
                 diags.append(finding)
         diags.sort(key=lambda d: (d.line, d.col))
@@ -488,7 +490,7 @@ def _enum_chain(head: ast.If, lookup: _EnumLookup, *, elif_only: bool = False) -
     return _EnumChain(first.target, _EnumCoverage(domain, frozenset(covered)), branches)
 
 
-def _defaulting_warning(
+def _defaulting_error(
     node: ast.Match | ast.If, context: PythonFileContext, lookup: _EnumLookup, code: str
 ) -> Diagnostic | None:
     if isinstance(node, ast.Match):
@@ -518,7 +520,9 @@ def _defaulting_warning(
         and _is_silent_body(body)
     ):
         return None
-    if rejecting_body(body, node, context) is not False:
+    if rejecting_body(body, node, context) is not False or _assigns_enum_subset(
+        node, subject, coverage, context, lookup
+    ):
         return None
     enum_name = coverage.domain.declaration.name
     members = ", ".join(f"`{enum_name}.{member}`" for member in sorted(missing))
@@ -528,9 +532,39 @@ def _defaulting_warning(
         line=anchor.lineno,
         col=anchor.col_offset + 1,
         code=code,
-        severity=Severity.WARNING,
+        severity=Severity.ERROR,
         message=f"Enum dispatch routes {members} through the catch-all. {remedy}",
     )
+
+
+def _assigns_enum_subset(
+    node: ast.stmt, subject: ast.expr, coverage: _EnumCoverage, context: PythonFileContext, lookup: _EnumLookup
+) -> bool:
+    scope = context.parents.get(node)
+    if not isinstance(subject, ast.Name) or not isinstance(scope, ast.FunctionDef | ast.AsyncFunctionDef):
+        return False
+    match previous_statements(node, scope):
+        case [*_, ast.Match(cases=cases)]:
+            pass
+        case _:
+            return False
+    targets: list[ast.Name] = []
+    values: list[ast.expr] = []
+    for case in cases:
+        match case.body:
+            case [ast.Assign(targets=[ast.Name() as target], value=value)] if target.id == subject.id:
+                targets.append(target)
+            case _:
+                return False
+        match value:
+            case ast.IfExp(body=when_true, orelse=when_false):
+                values.extend((when_true, when_false))
+            case _:
+                values.append(value)
+    if set(context.runtime_bindings.lookup(scope, subject.id) or ()) != set(targets):
+        return False
+    assigned = _enum_member_set(values, lookup)
+    return assigned is not None and assigned.domain == coverage.domain and assigned.covered < coverage.domain.members
 
 
 def _starts_elif_chain(node: ast.If, context: PythonFileContext) -> bool:

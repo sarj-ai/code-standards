@@ -132,10 +132,12 @@ import { PREFER_MONOTONIC_FOR_ELAPSED_TIME_DOCUMENTATION } from "./prefer-monoto
 import { PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION } from "./prefer-multi-value-zod-literal.js";
 import { PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION } from "./prefer-named-callback-domain.js";
 import { PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION } from "./prefer-named-complex-return-type.js";
+import { PREFER_NAMED_LITERAL_UNION_DOCUMENTATION } from "./prefer-named-literal-union.js";
 import { PREFER_NATIVE_FETCH_IN_SERVER_ACTIONS_DOCUMENTATION } from "./prefer-native-fetch-in-server-actions.js";
 import { PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION } from "./prefer-native-random-uuid.js";
 import { PREFER_NODE_CRYPTO_HASH_DOCUMENTATION } from "./prefer-node-crypto-hash.js";
 import { PREFER_NODE_FS_PROMISES_DOCUMENTATION } from "./prefer-node-fs-promises.js";
+import { PREFER_NOMINAL_ID_MEMBERS_DOCUMENTATION } from "./prefer-nominal-id-members.js";
 import { PREFER_NOMINAL_ID_TYPES_DOCUMENTATION } from "./prefer-nominal-id-types.js";
 import { PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION } from "./prefer-non-nullable-collection.js";
 import { PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION } from "./prefer-nullish-filter-predicate.js";
@@ -159,6 +161,7 @@ import { PRODUCTION_DERIVED_TEST_CASES_DOCUMENTATION } from "./production-derive
 import { REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION } from "./react-prefer-updater-function.js";
 import { REPEATED_STATIC_CALL_CASES_DOCUMENTATION } from "./repeated-static-call-cases.js";
 import { REQUIRE_ASSERT_NEVER_DOCUMENTATION } from "./require-assert-never.js";
+import { REQUIRE_BRANDED_ID_SCHEMA_DOCUMENTATION } from "./require-branded-id-schema.js";
 import { REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION } from "./require-button-accessible-name.js";
 import { REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION } from "./require-camelcase-properties.js";
 import { REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION } from "./require-constrained-schema-integer.js";
@@ -311,10 +314,12 @@ export const RULE_DOCUMENTATION = {
   "prefer-multi-value-zod-literal": PREFER_MULTI_VALUE_ZOD_LITERAL_DOCUMENTATION,
   "prefer-named-callback-domain": PREFER_NAMED_CALLBACK_DOMAIN_DOCUMENTATION,
   "prefer-named-complex-return-type": PREFER_NAMED_COMPLEX_RETURN_TYPE_DOCUMENTATION,
+  "prefer-named-literal-union": PREFER_NAMED_LITERAL_UNION_DOCUMENTATION,
   "prefer-native-fetch-in-server-actions": PREFER_NATIVE_FETCH_IN_SERVER_ACTIONS_DOCUMENTATION,
   "prefer-native-random-uuid": PREFER_NATIVE_RANDOM_UUID_DOCUMENTATION,
   "prefer-node-crypto-hash": PREFER_NODE_CRYPTO_HASH_DOCUMENTATION,
   "prefer-node-fs-promises": PREFER_NODE_FS_PROMISES_DOCUMENTATION,
+  "prefer-nominal-id-members": PREFER_NOMINAL_ID_MEMBERS_DOCUMENTATION,
   "prefer-nominal-id-types": PREFER_NOMINAL_ID_TYPES_DOCUMENTATION,
   "prefer-non-nullable-collection": PREFER_NON_NULLABLE_COLLECTION_DOCUMENTATION,
   "prefer-nullish-filter-predicate": PREFER_NULLISH_FILTER_PREDICATE_DOCUMENTATION,
@@ -338,6 +343,7 @@ export const RULE_DOCUMENTATION = {
   "react-prefer-updater-function": REACT_PREFER_UPDATER_FUNCTION_DOCUMENTATION,
   "repeated-static-call-cases": REPEATED_STATIC_CALL_CASES_DOCUMENTATION,
   "require-assert-never": REQUIRE_ASSERT_NEVER_DOCUMENTATION,
+  "require-branded-id-schema": REQUIRE_BRANDED_ID_SCHEMA_DOCUMENTATION,
   "require-button-accessible-name": REQUIRE_BUTTON_ACCESSIBLE_NAME_DOCUMENTATION,
   "require-camelcase-properties": REQUIRE_CAMELCASE_PROPERTIES_DOCUMENTATION,
   "require-constrained-schema-integer": REQUIRE_CONSTRAINED_SCHEMA_INTEGER_DOCUMENTATION,

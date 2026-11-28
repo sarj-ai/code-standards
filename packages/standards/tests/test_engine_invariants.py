@@ -9,7 +9,7 @@ from sarj_standards.libs.diagnostics import Diagnostic, Location, Severity
 from sarj_standards.libs.linting import policy
 from sarj_standards.libs.release.tags import RELEASE_TARGETS
 from sarj_standards.libs.repository import rule_changes, rule_lifecycle
-from sarj_standards.libs.rules import RuleEngine
+from sarj_standards.libs.rules import AutofixPolicy, DefaultLevel, Language, RuleCategory, RuleEngine
 
 
 _ROOT = Path(__file__).parents[3]
@@ -76,6 +76,15 @@ def test_engine_matrix_exhausts_the_public_contract_and_schema() -> None:
     assert expected.isdisjoint(_UPSTREAM_ENGINES)
     assert expected | _UPSTREAM_ENGINES == set(RuleEngine)
     assert {_text(value) for value in _array(engine["enum"])} == {engine.value for engine in expected}
+    declared = {
+        RuleCategory: properties["category"],
+        DefaultLevel: properties["defaultLevel"],
+        AutofixPolicy: properties["autofix"],
+        Language: _object(properties["languages"])["items"],
+    }
+    assert {
+        contract: {_text(value) for value in _array(_object(node)["enum"])} for contract, node in declared.items()
+    } == {contract: {member.value for member in contract} for contract in declared}
 
 
 def test_engine_family_and_release_mappings_agree() -> None:

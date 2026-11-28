@@ -16,11 +16,14 @@ import pytest
 import sarj_standards.cli.main as cli
 from sarj_standards.libs.adoption import doctor, lifecycle, manifest, scaffold
 from sarj_standards.libs.adoption.doctor import Level, check_pyright_deprecated, check_ruff_policy_authority
+from sarj_standards.libs.json_boundary import parse_json
 from sarj_standards.libs.repository import ledger
 
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+    from pydantic import JsonValue
 
     from tests.call_contracts import SubprocessOptions
 
@@ -217,6 +220,135 @@ def test_python_wiring_bounds_its_inheritance_walk(python_adoption: Path, parent
     findings = [item for item in doctor.diagnose_adoption_health(root) if item.id == "doctor.pyright.wiring"]
 
     assert [item.level for item in findings] == [Level.OK if wired else Level.DRIFT]
+
+
+@pytest.mark.parametrize(
+    ("key", "value"),
+    [
+        ("reportAny", "none"),
+        ("reportUnknownMemberType", "warning"),
+        ("reportUnknownParameterType", False),
+        ("typeCheckingMode", "standard"),
+        ("strictListInference", False),
+        ("strictGenericNarrowing", False),
+        ("enableTypeIgnoreComments", True),
+        ("ignore", ["src/legacy"]),
+    ],
+)
+def test_doctor_reports_each_weaker_managed_pyright_setting(python_adoption: Path, key: str, value: JsonValue) -> None:
+    (python_adoption / "pyrightconfig.json").write_text(
+        json.dumps({"extends": ".basedpyright-strict.json", key: value}), encoding="utf-8"
+    )
+
+    findings = [
+        item for item in doctor.diagnose_adoption_health(python_adoption) if item.id == "doctor.pyright.weakens-policy"
+    ]
+
+    assert [(item.level, item.where) for item in findings] == [(Level.DRIFT, f"pyrightconfig.json: {key}")]
+
+
+def test_doctor_checks_pyright_policy_at_each_level_of_a_jsonc_chain(python_adoption: Path) -> None:
+    (python_adoption / "pyrightconfig.json").write_text(
+        '{"extends":"base.jsonc", "reportAny":"error"}', encoding="utf-8"
+    )
+    (python_adoption / "base.jsonc").write_text(
+        '// Shared settings\n{"extends":".basedpyright-strict.json", "reportAny":"none",}', encoding="utf-8"
+    )
+
+    findings = [
+        item.where
+        for item in doctor.diagnose_adoption_health(python_adoption)
+        if item.id == "doctor.pyright.weakens-policy"
+    ]
+
+    assert findings == ["base.jsonc: reportAny"]
+
+
+@pytest.mark.parametrize("table", ["basedpyright", "pyright"])
+def test_doctor_checks_discovered_toml_without_counting_a_shadowed_table(python_adoption: Path, table: str) -> None:
+    (python_adoption / "pyproject.toml").write_text(
+        f'[tool.{table}]\nextends = ".basedpyright-strict.json"\nreportAny = "none"\n', encoding="utf-8"
+    )
+    assert [
+        item.where
+        for item in doctor.diagnose_adoption_health(python_adoption)
+        if item.id == "doctor.pyright.weakens-policy"
+    ] == ["pyproject.toml: reportAny"]
+
+    (python_adoption / "pyrightconfig.json").write_text('{"extends":".basedpyright-strict.json"}', encoding="utf-8")
+
+    assert all(item.id != "doctor.pyright.weakens-policy" for item in doctor.diagnose_adoption_health(python_adoption))
+
+
+def test_doctor_reports_distinct_overrides_in_pyright_execution_environments(python_adoption: Path) -> None:
+    (python_adoption / "pyrightconfig.json").write_text(
+        json.dumps(
+            {
+                "extends": ".basedpyright-strict.json",
+                "executionEnvironments": [
+                    {"root": "src", "reportAny": "hint", "enableTypeIgnoreComments": True},
+                    {"root": "tests", "reportAny": "hint", "extraPaths": ["src"]},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    findings = [
+        item.where
+        for item in doctor.diagnose_adoption_health(python_adoption)
+        if item.id == "doctor.pyright.weakens-policy"
+    ]
+
+    assert findings == [
+        "pyrightconfig.json: executionEnvironments[0].enableTypeIgnoreComments",
+        "pyrightconfig.json: executionEnvironments[0].reportAny",
+        "pyrightconfig.json: executionEnvironments[1].reportAny",
+    ]
+
+
+def test_doctor_allows_pyright_project_settings_and_equal_or_stronger_policy(python_adoption: Path) -> None:
+    (python_adoption / "pyrightconfig.json").write_text(
+        json.dumps(
+            {
+                "extends": ".basedpyright-strict.json",
+                "include": ["src"],
+                "exclude": ["src/generated"],
+                "pythonVersion": "3.15",
+                "venvPath": "envs",
+                "reportAny": "error",
+                "reportUnknownMemberType": True,
+                "reportUnusedCallResult": "warning",
+                "reportExplicitAny": "invalid",
+                "typeCheckingMode": "strict",
+                "strictListInference": True,
+                "enableTypeIgnoreComments": False,
+                "ignore": [],
+                "executionEnvironments": [{"root": ".", "reportAny": "error"}, None],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert all(item.id != "doctor.pyright.weakens-policy" for item in doctor.diagnose_adoption_health(python_adoption))
+
+
+def test_machine_check_fails_on_pyright_policy_drift_once_per_key(
+    python_adoption: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (python_adoption / "pyrightconfig.json").write_text(
+        '{\n  "extends": ".basedpyright-strict.json",\n  "reportDeprecated": false\n}', encoding="utf-8"
+    )
+
+    assert cli.main(["--root", str(python_adoption), "check", "--format", "json"]) == 1
+    report = manifest.as_table(parse_json(capsys.readouterr().out))
+    diagnostics = [manifest.as_table(item) for item in manifest.list_field(report, "diagnostics")]
+    pyright = [
+        item
+        for item in diagnostics
+        if manifest.text_field(item, "ruleId") in {"doctor.pyright.weakens-policy", "doctor.pyright.report-deprecated"}
+    ]
+    assert [(item["ruleId"], item["severity"]) for item in pyright] == [("doctor.pyright.weakens-policy", "error")]
 
 
 def test_doctor_rejects_non_string_manifest_destinations_without_a_traceback(

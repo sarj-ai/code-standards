@@ -10,8 +10,26 @@ permissions:
   contents: read
 
 jobs:
+  # The phases are the serial recipe of `make verify`, one runner each; a test
+  # keeps the two target lists identical.
   verify:
-    name: Native make verify
+    name: Native make verify (${{ matrix.phase }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - phase: docs and lint
+            run: |
+              make --no-print-directory doctor docs-check
+              make --no-print-directory --assume-old=typescript-build format-check lint
+          - phase: dogfood and types
+            run: make --no-print-directory --assume-old=typescript-build dogfood-python typecheck
+          - phase: package tests
+            run: make --no-print-directory --assume-old=typescript-build verify-test-typescript verify-test-python
+          - phase: standards tests
+            run: |
+              make --no-print-directory --assume-old=typescript-build verify-test-standards
+              make --no-print-directory repo-check check-no-private-refs shell-check
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
@@ -61,8 +79,26 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           MISE_GITHUB_TOKEN: ${{ github.token }}
         run: mise exec "python@$UV_PYTHON" -- uv run --project packages/standards --frozen python -m sarj_standards.libs.release.native_test_setup --root .
-      - name: Verify the complete candidate
-        run: mise exec "python@$UV_PYTHON" -- make verify
+      - name: Verify this phase of the candidate
+        env:
+          PHASE: ${{ matrix.run }}
+        run: mise exec "python@$UV_PYTHON" -- bash -euo pipefail -c "$PHASE"
+
+  complete:
+    name: Native make verify
+    needs: verify
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Harden the runner
+        uses: step-security/harden-runner@aebdcf6156ab6691adf63218240e476564a1ed4c # v2.23.0
+        with:
+          egress-policy: audit
+      - name: Require every phase
+        env:
+          RESULT: ${{ needs.verify.result }}
+        run: test "$RESULT" = success
 
   windows-portability:
     name: Windows consumer portability

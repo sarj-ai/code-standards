@@ -55,12 +55,28 @@
       "state": "pending"
     },
     {
+      "task": "rule-audit/typescript/prefer-nominal-id-members",
+      "family": "typescript",
+      "ruleId": "prefer-nominal-id-members",
+      "state": "pending",
+      "evidence": "Oxlint scanned 9,206 files from immutable snapshots, reported 575 member warnings including 31 test findings, and retained all 179 callable diagnostics at their original locations. Review of 24 hash-ranked production findings found 15 actionable suggestions, seven same-domain or raw-boundary cases, and two ambiguous cases. In three alternating runs on 240 files, median first runs were 1.48 and 1.91 seconds and median repeat runs were 1.76 and 2.01 seconds. Median peak RSS ranged from 110,488 to 120,460 KiB across the four groups.",
+      "outcome": "Ship at WARNING. Distinct brands let TypeScript reject swaps between primitive identifier roles. Review same-domain role pairs and third-party wire contracts before considering a higher severity."
+    },
+    {
       "task": "rule-audit/typescript/prefer-total-union-record",
       "family": "typescript",
       "ruleId": "prefer-total-union-record",
       "state": "pending",
       "evidence": "Isolated native checks over 1,330 immutable production TypeScript files found one reviewed finite-union registry and preserved the existing widening finding. The seven labeled live sites yielded one true positive and six true negatives. On 34 candidate-bearing files, three alternating baseline/candidate pairs measured median first runs of 0.708/0.704 seconds, median repeat runs of 0.673/0.716 seconds, and peak child RSS of 139,912/140,468 KiB.",
       "outcome": "Ship at WARNING. Share the existing closure proof and suggest a total record for the proven key domain. Review fallback and public contract changes manually. Broader calibration remains pending."
+    },
+    {
+      "task": "rule-audit/typescript/prefer-named-literal-union",
+      "family": "typescript",
+      "ruleId": "prefer-named-literal-union",
+      "state": "pending",
+      "evidence": "Focused RuleTester suites passed 38 cases across the new rule and the callback rule. Six pinned consumer files reproduced both repetition thresholds and alias reuse. A two-member domain used twice stayed below the threshold, and the second fix pass left the consumer alias replacement unchanged.",
+      "outcome": "Ship at WARNING. Suggest a named alias for repeated string literal domains, with an automatic replacement when one visible nongeneric alias preserves the full member set. Broader calibration remains pending."
     },
     {
       "task": "rule-audit/python/no-nonlocal-statement",
@@ -3951,6 +3967,22 @@
       "state": "pending",
       "evidence": "Across an 83-file sample from five pinned Python source snapshots, the isolated replay found 11 of 12 labelled positives and left all four labelled near misses unreported. The missed comparison used an inferred local type. Existing enum controls had no overlapping findings. Three paired runs with project indexing in both configurations measured median process times of 13.68 s and 16.52 s before and after adding the rule.",
       "outcome": "Introduce SARJ612 at WARNING without autofix. Resolve declared enum types and named enum member values before reporting raw comparisons. Leave generated code, custom equality, and opaque SQL-style expressions outside the rule's scope."
+    },
+    {
+      "task": "rule-audit/python/prefer-secret-field-type",
+      "family": "python",
+      "ruleId": "prefer-secret-field-type",
+      "state": "pending",
+      "evidence": "A runtime check reproduced plain-value exposure in Pydantic model representations and masking with SecretStr. An isolated comparison across 64 files at six pinned revisions added 103 warnings and detected all nine existing settings-exposure cases. The rule can also match public values, digests and secret references. Broader consumer calibration remains pending.",
+      "outcome": "Ship SARJ613 at WARNING. Use SecretStr or SecretBytes where credential masking fits the model contract and keep intentional raw serialization explicit."
+    },
+    {
+      "task": "rule-audit/typescript/require-branded-id-schema",
+      "family": "typescript",
+      "ruleId": "require-branded-id-schema",
+      "state": "pending",
+      "evidence": "Distinct Zod brands rejected an identifier swap that passed primitive UUID validation. The isolated scan of 9,206 files added 274 warnings. A deterministic sample of 30 findings included one same-domain pair and three mixed-field findings that inferred branding from references to raw schemas.",
+      "outcome": "Warn when named identifier schemas or direct primitive aliases lose their domain, or when a direct Zod object mixes branded and raw identifiers or shares a scalar carrier across distinct raw roles. Branding changes the output type, so remediation is manual."
     }
   ]
 }
