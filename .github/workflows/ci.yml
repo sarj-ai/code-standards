@@ -930,7 +930,7 @@ jobs:
 
   standards:
     name: standards package
-    needs: [changes, static-analysis, package-tests, adoption-smoke, python-compatibility]
+    needs: [changes, static-analysis, package-tests, adoption-smoke]
     if: always() && (needs.changes.result != 'success' || needs.changes.outputs.standards != 'false')
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -940,7 +940,7 @@ jobs:
         with:
           egress-policy: audit
       - name: Require routing, analysis, wheel tests, and adoption smoke to succeed
-        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success' || needs.adoption-smoke.result != 'success' || (github.event_name != 'pull_request' && needs.python-compatibility.result != 'success')
+        if: needs.changes.result != 'success' || needs.static-analysis.result != 'success' || needs.package-tests.result != 'success' || needs.adoption-smoke.result != 'success'
         run: exit 1
 
   docs-build:
@@ -1267,7 +1267,8 @@ jobs:
 
   packages-complete:
     name: CI packages
-    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, python-compatibility, standards, gitleaks, dependency-review, codeql, scorecard, reuse]
+    # Publication waits for this job. The minimum-runtime lane and CodeQL report in `CI complete`.
+    needs: [size, changes, bootstrap, bootstrap-portability, contracts, python, sql, iac, typescript, tsconfig, portability-smoke, mobile-kotlin-smoke, mobile-swift-smoke, static-analysis, package-tests, adoption-smoke, standards, gitleaks, dependency-review, scorecard, reuse]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
